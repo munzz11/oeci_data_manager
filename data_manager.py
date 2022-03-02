@@ -75,7 +75,8 @@ for i in range(len(files)):
   count += 1
   if count >= next_report:
     next_report += 50
-    print (count,'of',len(files))
+    time_so_far = datetime.datetime.now()-start_time
+    print (count,'of',len(files),' files, seconds elapsed:', time_so_far.total_seconds(), 'rate:', total_size/time_so_far.total_seconds(),'bytes per second')
 
 end_time = datetime.datetime.now()
 
