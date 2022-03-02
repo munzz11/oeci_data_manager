@@ -57,15 +57,25 @@ for platform in platforms:
     for sensor in sensors:
       print ('        sensor:', sensor.parts[-1])
 
+files = []
 file_info = []
 total_size = 0
 start_time = datetime.datetime.now()
 
 for potential_file in top_level.glob("**/*"):
   if potential_file.is_file():
-    h,s = get_hash(potential_file)
-    file_info.append((potential_file,h,s))
-    total_size += s
+    files.append(potential_file)
+
+count = 0
+next_report = 0
+for i in range(len(files)):
+  h,s = get_hash(files[i])
+  file_info.append((files[i],h,s))
+  total_size += s
+  count += 1
+  if count >= next_report:
+    next_report += 50
+    print (count,'of',len(files))
 
 end_time = datetime.datetime.now()
 
