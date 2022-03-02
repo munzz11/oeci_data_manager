@@ -22,7 +22,7 @@ def get_hash(filename):
 if len(sys.argv) < 2:
   usage()
 
-top_level = pathlib.Path(sys.argv[-1]) # last item, stuff before could be options
+top_level = pathlib.Path(sys.argv[-1]).absolute() # last item, stuff before could be options
 
 if not top_level.is_dir():
   print(top_level,"does not seem to be a directory")
