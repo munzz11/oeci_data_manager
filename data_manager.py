@@ -4,6 +4,7 @@ import sys
 import pathlib
 import hashlib
 import datetime
+import json
 
 def usage():
   print ("Usage: data_manager.py top_level_dir")
@@ -29,6 +30,10 @@ if not top_level.is_dir():
   usage()
 
 print (top_level)
+
+
+data_manager_dir = top_level/'.data_manager'
+print("config dir:",data_manager_dir," is dir?", data_manager_dir.is_dir())
 
 expedition = top_level.parts[-1]
 print('\nExpedition:', expedition)
@@ -63,16 +68,36 @@ total_size = 0
 start_time = datetime.datetime.now()
 
 for potential_file in top_level.glob("**/*"):
-  if potential_file.is_file():
-    files.append(potential_file)
+  if not data_manager_dir in potential_file.parents:
+    if potential_file.is_file():
+      files.append(potential_file)
 
 count = 0
 next_report = 0
 for i in range(len(files)):
-  h,s = get_hash(files[i])
-  file_info.append((files[i],h,s))
-  total_size += s
-  count += 1
+  json_file = data_manager_dir/files[i].relative_to(top_level).parent/(files[i].name+'.json')
+  if json_file.is_file():
+    config = json.load(open(json_file))
+  else:
+    config = {}
+
+  file_size = files[i].stat().st_size
+  mod_time = files[i].stat().st_mtime
+
+  need_hash = not ('size' in config and config['size'] == file_size and 'modify_time' in config and config['modify_time'] == mod_time)
+
+  if need_hash:
+    print('hashing', files[i])
+    h,s = get_hash(files[i])
+    config['hash'] = h
+    config['size'] = file_size
+    config['modify_time'] = mod_time
+    json_file.parent.mkdir(parents=True, exist_ok=True)
+    json.dump(config, open(json_file,"w"))
+
+    file_info.append((files[i],h,s))
+    total_size += s
+    count += 1
   if count >= next_report:
     next_report += 50
     time_so_far = datetime.datetime.now()-start_time
