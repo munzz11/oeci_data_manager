@@ -67,6 +67,8 @@ file_info = []
 total_size = 0
 start_time = datetime.datetime.now()
 
+manifest = []
+
 for potential_file in top_level.glob("**/*"):
   if not data_manager_dir in potential_file.parents:
     if potential_file.is_file():
@@ -98,6 +100,8 @@ for i in range(len(files)):
     file_info.append((files[i],h,s))
     total_size += s
     count += 1
+
+  manifest.append((files[i].relative_to(top_level),config['hash']))
   if count >= next_report:
     next_report += 50
     time_so_far = datetime.datetime.now()-start_time
@@ -106,3 +110,8 @@ for i in range(len(files)):
 end_time = datetime.datetime.now()
 
 print("hashed",len(file_info), 'files totaling', total_size, 'bytes in', (end_time-start_time).total_seconds(), ' seconds.')
+
+manifest_file = open(top_level/"manifest_temp.txt",'w')
+for f in manifest:
+  if f[0] != manifest_file:
+    manifest_file.write(str(f[0])+' '+f[1]+'\n')
