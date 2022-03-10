@@ -22,9 +22,12 @@ class RosBagHandler:
     return False
 
   def process(self, filename, meta):
-    bag = rosbag.Bag(filename)
-    meta['saved']['ros_start_time'] = bag.get_start_time()
-    meta['saved']['ros_end_time'] = bag.get_end_time()
+    try:
+      bag = rosbag.Bag(filename)
+      meta['saved']['ros_start_time'] = bag.get_start_time()
+      meta['saved']['ros_end_time'] = bag.get_end_time()
+    except Exception:
+      print("error processing",filename)
 
     track = []
     last_report_time = None

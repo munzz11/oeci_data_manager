@@ -185,7 +185,8 @@ pipeline = []
 
 pipeline.append(RosBagHandler())
 pipeline.append(HashHandler())
-pipeline.append(MetaSaver())
+#pipeline.append(MetaSaver())
+saver = MetaSaver()
 
 for processor in pipeline:
   print()
@@ -211,6 +212,7 @@ for processor in pipeline:
 
   for f in need_processing_files:
     processor.process(f, metadata[f])
+    saver.process(f, metadata[f])
     newly_processed_count += 1
     newly_processed_size += metadata[f]['size']
     now = datetime.datetime.now()
