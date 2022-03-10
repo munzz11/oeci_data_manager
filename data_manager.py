@@ -89,7 +89,7 @@ for i in range(len(files)):
   need_hash = not ('size' in config and config['size'] == file_size and 'modify_time' in config and config['modify_time'] == mod_time)
 
   if need_hash:
-    print('hashing', files[i])
+    #print('hashing', files[i])
     h,s = get_hash(files[i])
     config['hash'] = h
     config['size'] = file_size
