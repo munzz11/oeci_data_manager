@@ -6,19 +6,69 @@ import hashlib
 import datetime
 import json
 
+from ros_bag_handler import RosBagHandler
+
 def usage():
   print ("Usage: data_manager.py top_level_dir")
   sys.exit(1)
 
-def get_hash(filename):
-  hash = hashlib.sha256()
-  datasize = 0
-  #hash = hashlib.md5()
-  with open(filename, 'rb') as f:
-    for chunk in iter(lambda: f.read(4096), b""):
-      hash.update(chunk)
-      datasize += len(chunk)
-  return hash.hexdigest(), datasize
+class HashHandler:
+  def __init__(self):
+    self.hasher = hashlib.sha256
+    self.label = 'sha256'
+
+  def needsProcessing(self, filename, meta):
+    return meta['needs_update'] or not 'hash' in meta['saved']
+
+  def process(self, filename, meta):
+    hash = self.hasher()
+    with open(filename, 'rb') as f:
+      for chunk in iter(lambda: f.read(4096), b""):
+        hash.update(chunk)
+    meta['saved']['hash'] = hash.hexdigest()
+
+class MetaReader:
+  def __init__(self, toplevel, meta_root='.data_manager', ignore=[]):
+    self.toplevel = toplevel
+    self.meta_root = toplevel/meta_root
+    self.ignore = ignore
+
+  def needsProcessing(self, filename, meta):
+    if filename in self.ignore:
+      return False
+    if not self.meta_root in filename.parents:
+      return filename.is_file()
+    return False
+
+  def process(self, filename, meta):
+    file_size = filename.stat().st_size
+    mod_time = filename.stat().st_mtime
+    needs_update = True
+    meta_file = self.meta_root/filename.relative_to(self.toplevel).parent/(f.name+'.json')
+    if meta_file.is_file():
+      m = json.load(open(meta_file))
+      needs_update = not ('size' in m and m['size'] == file_size and 'modify_time' in m and m['modify_time'] == mod_time)
+      meta['saved'] = m
+    else:
+      meta['saved'] = {}
+    meta['size'] = file_size
+    meta['modify_time'] = mod_time
+    meta['needs_update'] = needs_update
+    meta['meta_file'] = meta_file
+
+class MetaSaver:
+  def __init__(self):
+    pass
+
+  def needsProcessing(self, filename, meta):
+    return meta['needs_update']
+
+  def process(self, filename, meta):
+    meta['saved']['size'] = meta['size']
+    meta['saved']['modify_time'] = meta['modify_time']
+    meta['meta_file'].parent.mkdir(parents=True, exist_ok=True)
+    json.dump(meta['saved'], open(meta['meta_file'],"w"))
+
 
 # from https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
 def human_readable_size(size, decimal_places=3):
@@ -39,7 +89,6 @@ if not top_level.is_dir():
 
 print (top_level)
 
-
 data_manager_dir = top_level/'.data_manager'
 print("config dir:",data_manager_dir," is dir?", data_manager_dir.is_dir())
 
@@ -52,8 +101,9 @@ print("  Description present?", description_path.is_file())
 
 platforms = []
 for p in top_level.glob('*'):
-  if p.is_dir():
-    platforms.append(p)
+  if p != data_manager_dir:
+    if p.is_dir():
+      platforms.append(p)
 
 for platform in platforms:
   print ('    Platform:', platform.parts[-1])
@@ -73,78 +123,74 @@ for platform in platforms:
 files = []
 start_time = datetime.datetime.now()
 
-manifest = []
+
+meta_reader = MetaReader(top_level, ignore=[top_level/"manifest_temp.txt",])
 
 for potential_file in top_level.glob("**/*"):
-  if not data_manager_dir in potential_file.parents:
-    if potential_file.is_file():
-      files.append(potential_file)
+  if meta_reader.needsProcessing(potential_file, None):
+    files.append(potential_file)
 
-configs = {}
+
+metadata = {}
 total_size = 0
-need_hash_size = 0
-need_hash_count = 0
-
 
 for f in files:
-  configs[f] = {}
-  configs[f]['json_file'] = data_manager_dir/f.relative_to(top_level).parent/(f.name+'.json')
-  if configs[f]['json_file'].is_file():
-    config = json.load(open(configs[f]['json_file']))
-  else:
-    config = {}
+  metadata[f] = {}
+  meta_reader.process(f, metadata[f])
+  total_size += metadata[f]['size']
 
-  file_size = f.stat().st_size
-  mod_time = f.stat().st_mtime
-
-  need_hash = not ('size' in config and config['size'] == file_size and 'modify_time' in config and config['modify_time'] == mod_time)
-  if need_hash or not 'hash' in config:
-    config['hash'] = None
-
-  config['size'] = file_size
-  config['modify_time'] = mod_time
-  total_size += file_size
-  if config['hash'] is None:
-    need_hash_size += file_size
-    need_hash_count += 1
-
-  configs[f]['config'] = config
-
-start_hash_time = datetime.datetime.now()
-print ('scan time:', start_hash_time-start_time)
-
+print ('scan time:', datetime.datetime.now()-start_time)
 print (len(files),'files totaling',human_readable_size(total_size),'bytes')
-print (need_hash_count,'need hashing totaling',human_readable_size(need_hash_size),'bytes')
 
-newly_hashed_count = 0
-newly_hashed_size = 0
+pipeline = []
 
-last_report_time = start_hash_time
-last_report_newly_hashed_size = 0
+pipeline.append(HashHandler())
+pipeline.append(RosBagHandler())
+pipeline.append(MetaSaver())
 
-for f in files:
-  if configs[f]['config']['hash'] is None:
-    h,s = get_hash(f)
-    configs[f]['config']['hash'] = h
-    configs[f]['json_file'].parent.mkdir(parents=True, exist_ok=True)
-    json.dump(configs[f]['config'], open(configs[f]['json_file'],"w"))
-    newly_hashed_count += 1
-    newly_hashed_size += configs[f]['config']['size']
+for processor in pipeline:
+  print()
+  print(type(processor).__name__)
+  print()
+  need_processing_size = 0
+  need_processing_files = []
+
+  for f in files:
+    if processor.needsProcessing(f, metadata[f]):
+      need_processing_size += metadata[f]['size']
+      need_processing_files.append(f)
+
+  start_process_time = datetime.datetime.now()
+
+  print (len(need_processing_files),'need processing totaling',human_readable_size(need_processing_size))
+
+  newly_processed_count = 0
+  newly_processed_size = 0
+
+  last_report_time = start_process_time
+  last_report_newly_processed_size = 0
+
+  for f in need_processing_files:
+    processor.process(f, metadata[f])
+    newly_processed_count += 1
+    newly_processed_size += metadata[f]['size']
     now = datetime.datetime.now()
     since_last_report = now-last_report_time
     if since_last_report > datetime.timedelta(seconds=5):
-      hash_rate = (newly_hashed_size-last_report_newly_hashed_size)/since_last_report.total_seconds()
-      estimated_time_remaining = (need_hash_size - newly_hashed_size) / hash_rate
-      percentage_complete = 100*newly_hashed_size/need_hash_size
-      print("percent complete:", percentage_complete,"rate:",human_readable_size(hash_rate)+'/s',"estimated seconds remaining:", estimated_time_remaining)
+      processing_rate = (newly_processed_size-last_report_newly_processed_size)/since_last_report.total_seconds()
+      estimated_time_remaining = datetime.timedelta(seconds=(need_processing_size - newly_processed_size) / processing_rate)
+      percentage_complete = 100*newly_processed_size/need_processing_size
+      print("percent complete:", percentage_complete,"rate:",human_readable_size(processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
       last_report_time = now
-      last_report_newly_hashed_size = newly_hashed_size
-  manifest.append((f.relative_to(top_level),configs[f]['config']['hash']))
+      last_report_newly_processed_size = newly_processed_size
 
+  end_time = datetime.datetime.now()
 
-end_time = datetime.datetime.now()
+  print("processed", newly_processed_count, 'files totaling', human_readable_size(newly_processed_size), ' duration:', (end_time-start_process_time))
 
-print("hashed", newly_hashed_count, 'files totaling', human_readable_size(newly_hashed_size), ' duration:', (end_time-start_hash_time))
+manifest = []
+for f in files:
+  manifest.append((f.relative_to(top_level),metadata[f]['saved']['hash']))
 
 manifest_file = open(top_level/"manifest_temp.txt",'w')
 for f in manifest:
