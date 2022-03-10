@@ -38,7 +38,7 @@ class RosBagHandler:
             fix['longitude'] = msg.longitude
             track.append(fix)
             last_report_time = msg.header.stamp
-    except OSError:
+    except Exception:
       print("error processing",filename)
 
     if len(track):

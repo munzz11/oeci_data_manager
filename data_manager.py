@@ -81,6 +81,8 @@ def human_readable_size(size, decimal_places=3):
 if len(sys.argv) < 2:
   usage()
 
+manifest_path = 'manifest.txt'
+
 top_level = pathlib.Path(sys.argv[-1]).absolute() # last item, stuff before could be options
 
 if not top_level.is_dir():
@@ -124,7 +126,7 @@ files = []
 start_time = datetime.datetime.now()
 
 
-meta_reader = MetaReader(top_level, ignore=[top_level/"manifest_temp.txt",])
+meta_reader = MetaReader(top_level, ignore=[top_level/manifest_path,])
 
 for potential_file in top_level.glob("**/*"):
   if meta_reader.needsProcessing(potential_file, None):
@@ -188,11 +190,47 @@ for processor in pipeline:
 
   print("processed", newly_processed_count, 'files totaling', human_readable_size(newly_processed_size), ' duration:', (end_time-start_process_time))
 
+
+
+
+
+for p in platforms:
+  all_nav = {}
+
+  nav_files = (top_level/p).glob('**/*.bag.nav.txt')
+  for nf in nav_files:
+    with nf.open() as f:
+      for l in f.readlines():
+        time, position = l.strip().split(',',1)
+        time = datetime.datetime.fromisoformat(time)
+        all_nav[time]=l.strip()
+  
+  time_sorted_nav = {k: all_nav[k] for k in sorted(all_nav)}
+
+  deployments_file = top_level/p/'01-catalog/deployments.json'
+  if deployments_file.is_file():
+    deployments_info = json.load(deployments_file.open())
+    for di in deployments_info:
+      print(di)
+      for dr in deployments_info[di]:
+        print (' ',dr)
+        for d in deployments_info[di][dr]:
+          for deployment_id in d:
+            print ('  ',deployment_id)
+            start_time = datetime.datetime.fromisoformat(d[deployment_id][0])
+            end_time = datetime.datetime.fromisoformat(d[deployment_id][1])
+            print(start_time,end_time)
+            deployment_nav = open(top_level/p/('01-catalog/deployment_'+deployment_id+'.nav.txt'),'w')
+            for t in time_sorted_nav:
+              if t >= start_time and t <= end_time:
+                deployment_nav.write(time_sorted_nav[t]+'\n')
+
+
 manifest = []
-for f in files:
+for f in sorted(files):
   manifest.append((f.relative_to(top_level),metadata[f]['saved']['hash']))
 
-manifest_file = open(top_level/"manifest_temp.txt",'w')
+manifest_file = open(top_level/manifest_path,'w')
 for f in manifest:
   if f[0] != manifest_file:
     manifest_file.write(str(f[0])+' '+f[1]+'\n')
