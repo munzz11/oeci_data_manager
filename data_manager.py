@@ -6,6 +6,8 @@ import hashlib
 import datetime
 import json
 
+from numpy import append
+
 from ros_bag_handler import RosBagHandler
 
 def usage():
@@ -78,6 +80,41 @@ def human_readable_size(size, decimal_places=3):
         size /= 1024.0
     return f"{size:.{decimal_places}f}{unit}"
 
+def toKML(nav_file):
+  kml_out = (nav_file.parent/(nav_file.name+'.kml')).open(mode='w')
+  kml_out.write('''<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>''')
+  kml_out.write(nav_file.name)
+  kml_out.write('''</name>
+    <Style id="yellowLineGreenPoly">
+      <LineStyle>
+        <color>7f00ffff</color>
+        <width>4</width>
+      </LineStyle>
+      <PolyStyle>
+        <color>7f00ff00</color>
+      </PolyStyle>
+    </Style>
+    <Placemark>
+      <name>deployment</name>
+      <styleUrl>#yellowLineGreenPoly</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>''')
+  for l in nav_file.open().readlines():
+    t,lat,lon = l.strip().split(',')
+    kml_out.write(lon.strip()+','+lat.strip()+',0\n')
+  kml_out.write('''</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>''')
+  
+
 if len(sys.argv) < 2:
   usage()
 
@@ -146,8 +183,8 @@ print (len(files),'files totaling',human_readable_size(total_size),'bytes')
 
 pipeline = []
 
-pipeline.append(HashHandler())
 pipeline.append(RosBagHandler())
+pipeline.append(HashHandler())
 pipeline.append(MetaSaver())
 
 for processor in pipeline:
@@ -208,6 +245,7 @@ for p in platforms:
   time_sorted_nav = {k: all_nav[k] for k in sorted(all_nav)}
 
   deployments_file = top_level/p/'01-catalog/deployments.json'
+  deployment_nav_files = []
   if deployments_file.is_file():
     deployments_info = json.load(deployments_file.open())
     for di in deployments_info:
@@ -220,11 +258,14 @@ for p in platforms:
             start_time = datetime.datetime.fromisoformat(d[deployment_id][0])
             end_time = datetime.datetime.fromisoformat(d[deployment_id][1])
             print(start_time,end_time)
-            deployment_nav = open(top_level/p/('01-catalog/deployment_'+deployment_id+'.nav.txt'),'w')
+            deployment_nav_file = top_level/p/('01-catalog/deployment_'+deployment_id+'.nav.txt')
+            deployment_nav = open(deployment_nav_file,'w')
             for t in time_sorted_nav:
               if t >= start_time and t <= end_time:
                 deployment_nav.write(time_sorted_nav[t]+'\n')
-
+            deployment_nav_files.append(deployment_nav_file)
+  for f in deployment_nav_files:
+    toKML(f)
 
 manifest = []
 for f in sorted(files):
