@@ -47,7 +47,7 @@ class MetaReader:
     file_size = filename.stat().st_size
     mod_time = filename.stat().st_mtime
     needs_update = True
-    meta_file = self.meta_root/filename.relative_to(self.toplevel).parent/(f.name+'.json')
+    meta_file = self.meta_root/filename.relative_to(self.toplevel).parent/(filename.name+'.json')
     if not 'saved' in meta:
       meta['saved'] = {}
     if meta_file.is_file():
@@ -279,6 +279,8 @@ if __name__ == '__main__':
       r.wait()
       f,meta = r.get()
       metadata[f]=meta
+      newly_processed_count += 1
+      newly_processed_size += meta['size']
   else:
 
     for f in need_processing_files:
