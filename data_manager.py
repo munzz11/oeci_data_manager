@@ -137,6 +137,12 @@ if __name__ == '__main__':
   if len(sys.argv) < 2:
     usage()
 
+  process_count = 1
+  if len(sys.argv) > 2:
+    process_count = int(sys.argv[1])
+
+  print ("process count", process_count)
+
   manifest_path = 'manifest.txt'
 
   top_level = pathlib.Path(sys.argv[-1]).absolute() # last item, stuff before could be options
@@ -225,16 +231,16 @@ if __name__ == '__main__':
   start_process_time = datetime.datetime.now()
 
 
-  multi = True
+  multi = process_count > 1
 
   if multi:
-    pool = Pool(processes=4)
+    pool = Pool(processes=process_count)
     results_list = []
 
     for f in need_processing_files:
-      if len(results_list) < 8:
+      if len(results_list) < process_count*2:
         results_list.append(pool.apply_async(processFile,(f,metadata[f])))
-      while len(results_list) >= 8:
+      while len(results_list) >= process_count*2:
         done_list = []
         for r in results_list:
           if r.ready():
