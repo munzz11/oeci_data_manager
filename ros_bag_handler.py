@@ -30,7 +30,7 @@ class RosBagHandler:
       if not '/gps' in tt.topics:
         return
     except Exception:
-      print("error processing",filename)
+      print("error processing",filename.absolute())
       return
 
     track = []
@@ -46,7 +46,7 @@ class RosBagHandler:
             track.append(fix)
             last_report_time = msg.header.stamp
     except Exception:
-      print("error processing",filename)
+      print("error processing",filename.absolute())
 
     if len(track):
       min_lat = max_lat = track[0]['latitude']

@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
   manifest_path = 'manifest.txt'
 
-  top_level = pathlib.Path(sys.argv[-1]).absolute() # last item, stuff before could be options
+  top_level = pathlib.Path(sys.argv[-1]).absolute() # last item in argv, stuff before could be options
 
   if not top_level.is_dir():
     print(top_level,"does not seem to be a directory")
@@ -249,7 +249,7 @@ if __name__ == '__main__':
           for d in done_list:
             fname = d.get()
             newly_processed_count += 1
-            newly_processed_size += metadata[f]['size']
+            newly_processed_size += metadata[fname]['size']
             results_list.remove(d)
           now = datetime.datetime.now()
           since_last_report = now-last_report_time
