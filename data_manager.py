@@ -129,17 +129,17 @@ def processFile(filename, top_level):
   reader.process(filename, meta)
 
   pipeline = []
-  saver = MetaSaver()
+  #saver = MetaSaver()
   pipeline.append(RosBagHandler())
-  pipeline.append(saver)
+  #pipeline.append(saver)
   pipeline.append(HashHandler())
-  pipeline.append(saver)
+  #pipeline.append(saver)
 
   for processor in pipeline:
     if processor.needsProcessing(filename, meta):
       processor.process(filename, meta)
 
-  return filename
+  return filename,meta
 
 
 
@@ -256,9 +256,10 @@ if __name__ == '__main__':
             done_list.append(r)
         if len(done_list):
           for d in done_list:
-            fname = d.get()
+            fname, meta = d.get()
+            metadata[fname] = meta
             newly_processed_count += 1
-            newly_processed_size += metadata[fname]['size']
+            newly_processed_size += meta['size']
             results_list.remove(d)
           now = datetime.datetime.now()
           since_last_report = now-last_report_time
@@ -271,15 +272,18 @@ if __name__ == '__main__':
             last_report_newly_processed_size = newly_processed_size
         else:
           time.sleep(.05)
-      print ('processing',f)
+      #print ('  processing',f.relative_to(top_level))
       results_list.append(pool.apply_async(processFile,(f,top_level)))
 
     for r in results_list:
       r.wait()
+      f,meta = r.get()
+      metadata[f]=meta
   else:
 
     for f in need_processing_files:
-      processFile(f, top_level)
+      fname, meta = processFile(f, top_level)
+      metadata[f] = meta
       newly_processed_count += 1
       newly_processed_size += metadata[f]['size']
       now = datetime.datetime.now()
@@ -291,6 +295,11 @@ if __name__ == '__main__':
         print("percent complete:", percentage_complete,"rate:",human_readable_size(processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
         last_report_time = now
         last_report_newly_processed_size = newly_processed_size
+
+  saver = MetaSaver()
+  for f in files:
+    saver.process(f,metadata[f])
+
 
   end_time = datetime.datetime.now()
 
@@ -333,10 +342,6 @@ if __name__ == '__main__':
               deployment_nav_files.append(deployment_nav_file)
     for f in deployment_nav_files:
       toKML(f)
-
-
-  for f in files:
-    meta_reader.process(f, metadata[f])
 
   manifest = []
   for f in sorted(files):
