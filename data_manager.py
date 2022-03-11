@@ -48,12 +48,15 @@ class MetaReader:
     mod_time = filename.stat().st_mtime
     needs_update = True
     meta_file = self.meta_root/filename.relative_to(self.toplevel).parent/(f.name+'.json')
-    if meta_file.is_file():
-      m = json.load(open(meta_file))
-      needs_update = not ('size' in m and m['size'] == file_size and 'modify_time' in m and m['modify_time'] == mod_time)
-      meta['saved'] = m
-    else:
+    if not 'saved' in meta:
       meta['saved'] = {}
+    if meta_file.is_file():
+      try:
+        m = json.load(open(meta_file))
+        needs_update = not ('size' in m and m['size'] == file_size and 'modify_time' in m and m['modify_time'] == mod_time)
+        meta['saved'] = m
+      except json.decoder.JSONDecodeError:
+        print('error loading meta:', meta_file.absolute(),'\n  ', meta_file.open().read())
     meta['size'] = file_size
     meta['modify_time'] = mod_time
     meta['needs_update'] = needs_update
@@ -70,7 +73,9 @@ class MetaSaver:
     meta['saved']['size'] = meta['size']
     meta['saved']['modify_time'] = meta['modify_time']
     meta['meta_file'].parent.mkdir(parents=True, exist_ok=True)
-    json.dump(meta['saved'], open(meta['meta_file'],"w"))
+    out_file = open(meta['meta_file'],"w")
+    json.dump(meta['saved'], out_file)
+    out_file.close()
 
 
 # from https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
@@ -114,11 +119,16 @@ def toKML(nav_file):
     </Placemark>
   </Document>
 </kml>''')
+  kml_out.close()
 
 
-def processFile(filename, meta):
+def processFile(filename, top_level):
+  reader = MetaReader(top_level)
+
+  meta={}
+  reader.process(filename, meta)
+
   pipeline = []
-
   saver = MetaSaver()
   pipeline.append(RosBagHandler())
   pipeline.append(saver)
@@ -239,8 +249,6 @@ if __name__ == '__main__':
     results_list = []
 
     for f in need_processing_files:
-      if len(results_list) < process_count*2:
-        results_list.append(pool.apply_async(processFile,(f,metadata[f])))
       while len(results_list) >= process_count*2:
         done_list = []
         for r in results_list:
@@ -263,12 +271,15 @@ if __name__ == '__main__':
             last_report_newly_processed_size = newly_processed_size
         else:
           time.sleep(.05)
+      print ('processing',f)
+      results_list.append(pool.apply_async(processFile,(f,top_level)))
+
     for r in results_list:
       r.wait()
   else:
 
     for f in need_processing_files:
-      processFile(f, metadata[f])
+      processFile(f, top_level)
       newly_processed_count += 1
       newly_processed_size += metadata[f]['size']
       now = datetime.datetime.now()
@@ -318,6 +329,7 @@ if __name__ == '__main__':
               for t in time_sorted_nav:
                 if t >= start_time and t <= end_time:
                   deployment_nav.write(time_sorted_nav[t]+'\n')
+              deployment_nav.close()
               deployment_nav_files.append(deployment_nav_file)
     for f in deployment_nav_files:
       toKML(f)
@@ -338,3 +350,4 @@ if __name__ == '__main__':
   for f in manifest:
     if f[0] != manifest_file:
       manifest_file.write(str(f[1])+'  '+str(f[0])+'\n')
+  manifest_file.close()
