@@ -26,8 +26,12 @@ class RosBagHandler:
       bag = rosbag.Bag(filename)
       meta['saved']['ros_start_time'] = bag.get_start_time()
       meta['saved']['ros_end_time'] = bag.get_end_time()
+      tt = bag.get_type_and_topic_info()
+      if not '/gps' in tt.topics:
+        return
     except Exception:
       print("error processing",filename)
+      return
 
     track = []
     last_report_time = None
