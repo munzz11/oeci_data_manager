@@ -328,12 +328,13 @@ if __name__ == '__main__':
 
   manifest = []
   for f in sorted(files):
-    if not 'hash' in metadata[f]['saved']:
-      print (f)
+    try:
+      manifest.append((f.relative_to(top_level),metadata[f]['saved']['hash']))
+    except KeyError:
+      print ('missing hash',f.relative_to(top_level))
       print (metadata[f])
-    manifest.append((f.relative_to(top_level),metadata[f]['saved']['hash']))
 
   manifest_file = open(top_level/manifest_path,'w')
   for f in manifest:
     if f[0] != manifest_file:
-      manifest_file.write(str(f[0])+' '+f[1]+'\n')
+      manifest_file.write(str(f[1])+'  '+str(f[0])+'\n')
