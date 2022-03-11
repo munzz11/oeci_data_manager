@@ -5,6 +5,7 @@ import pathlib
 import hashlib
 import datetime
 import json
+import time
 
 from multiprocessing import Pool
 
@@ -260,6 +261,8 @@ if __name__ == '__main__':
             print("percent complete:", percentage_complete,"rate:",human_readable_size(processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
             last_report_time = now
             last_report_newly_processed_size = newly_processed_size
+        else:
+          time.sleep(.05)
     for r in results_list:
       r.wait()
   else:
