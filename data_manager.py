@@ -1,149 +1,271 @@
 #!/usr/bin/env python3
 
+from logging import handlers
+from operator import index
 import sys
 import pathlib
-import hashlib
 import datetime
 import json
 import time
 
 from multiprocessing import Pool
 
+from meta_handler import MetaReader, MetaSaver
+from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
 
-def usage():
-  print ("Usage: data_manager.py top_level_dir")
+from config import ConfigPath
+from project import Project
+
+from data_manager_utils import resolvePath, human_readable_size
+
+def usage(error = None):
+  if error is not None:
+    print("\nERROR:",error)
+    print()
+  print ("Usage: data_manager.py [options] command [command options]")
+  print ("  options:")
+  print ("    --config-dir conf_dir   (default: ~/.data_manager)")
+  print ("    --verbose               (default: False)")
+  print ("  commands:")
+  print ("    list     List existing projects")
+  print ("    init     Initialize a new project")
+  print ("      --source source_dir   (required)")
+  print ("      --label project_label (default: top level of source dir)")
+  print ("      --output output_dir   (default: source dir)")
+  print ("    scan     Scan for files needing processing")
+  print ("      --project project     (required)")
+  print ("    process  Process files")
+  print ("      --project project     (required)")
+  
+  print()
   sys.exit(1)
 
-class HashHandler:
-  def __init__(self):
-    self.hasher = hashlib.sha256
-    self.label = 'sha256'
-
-  def needsProcessing(self, filename, meta):
-    return meta['needs_update'] or not 'hash' in meta['saved']
-
-  def process(self, filename, meta):
-    hash = self.hasher()
-    with open(filename, 'rb') as f:
-      for chunk in iter(lambda: f.read(4096), b""):
-        hash.update(chunk)
-    meta['saved']['hash'] = hash.hexdigest()
-
-class MetaReader:
-  def __init__(self, toplevel, meta_root='.data_manager', ignore=[]):
-    self.toplevel = toplevel
-    self.meta_root = toplevel/meta_root
-    self.ignore = ignore
-
-  def needsProcessing(self, filename, meta):
-    if filename in self.ignore:
-      return False
-    if not self.meta_root in filename.parents:
-      return filename.is_file()
-    return False
-
-  def process(self, filename, meta):
-    file_size = filename.stat().st_size
-    mod_time = filename.stat().st_mtime
-    needs_update = True
-    meta_file = self.meta_root/filename.relative_to(self.toplevel).parent/(filename.name+'.json')
-    if not 'saved' in meta:
-      meta['saved'] = {}
-    if meta_file.is_file():
-      try:
-        m = json.load(open(meta_file))
-        needs_update = not ('size' in m and m['size'] == file_size and 'modify_time' in m and m['modify_time'] == mod_time)
-        meta['saved'] = m
-      except json.decoder.JSONDecodeError:
-        print('error loading meta:', meta_file.absolute(),'\n  ', meta_file.open().read())
-    meta['size'] = file_size
-    meta['modify_time'] = mod_time
-    meta['needs_update'] = needs_update
-    meta['meta_file'] = meta_file
-
-class MetaSaver:
-  def __init__(self):
-    pass
-
-  def needsProcessing(self, filename, meta):
-    return meta['needs_update']
-
-  def process(self, filename, meta):
-    meta['saved']['size'] = meta['size']
-    meta['saved']['modify_time'] = meta['modify_time']
-    meta['meta_file'].parent.mkdir(parents=True, exist_ok=True)
-    out_file = open(meta['meta_file'],"w")
-    json.dump(meta['saved'], out_file)
-    out_file.close()
 
 
-# from https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
-def human_readable_size(size, decimal_places=3):
-    for unit in ['B','KiB','MiB','GiB','TiB']:
-        if size < 1024.0:
-            break
-        size /= 1024.0
-    return f"{size:.{decimal_places}f}{unit}"
-
-def toKML(nav_file):
-  kml_out = (nav_file.parent/(nav_file.name+'.kml')).open(mode='w')
-  kml_out.write('''<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>''')
-  kml_out.write(nav_file.name)
-  kml_out.write('''</name>
-    <Style id="yellowLineGreenPoly">
-      <LineStyle>
-        <color>7f00ffff</color>
-        <width>4</width>
-      </LineStyle>
-      <PolyStyle>
-        <color>7f00ff00</color>
-      </PolyStyle>
-    </Style>
-    <Placemark>
-      <name>deployment</name>
-      <styleUrl>#yellowLineGreenPoly</styleUrl>
-      <LineString>
-        <extrude>1</extrude>
-        <tessellate>1</tessellate>
-        <altitudeMode>absolute</altitudeMode>
-        <coordinates>''')
-  for l in nav_file.open().readlines():
-    t,lat,lon = l.strip().split(',')
-    kml_out.write(lon.strip()+','+lat.strip()+',0\n')
-  kml_out.write('''</coordinates>
-      </LineString>
-    </Placemark>
-  </Document>
-</kml>''')
-  kml_out.close()
-
-
-def processFile(filename, top_level):
-  reader = MetaReader(top_level)
-
-  meta={}
-  reader.process(filename, meta)
+def processFile(filename: pathlib.Path, project: Project, handler_list):
+  meta=None
 
   pipeline = []
-  #saver = MetaSaver()
-  pipeline.append(RosBagHandler())
-  #pipeline.append(saver)
-  pipeline.append(HashHandler())
-  #pipeline.append(saver)
+  for h in handler_list:
+    pipeline.append(h(project))
 
   for processor in pipeline:
     if processor.needsProcessing(filename, meta):
-      processor.process(filename, meta)
+      meta = processor.process(filename, meta)
 
   return filename,meta
 
 
-
 if __name__ == '__main__':
+
+  verbose = False
+  config_dir = pathlib.Path('~/.data_manager')
+  
+  i = 1
+
+  while i < len(sys.argv) and sys.argv[i].startswith('--'):
+    if sys.argv[i] == '--verbose':
+      verbose = True
+      i += 1
+    elif sys.argv[i] == '--config-dir':
+      config_dir = pathlib.Path(sys.argv[i+1])
+      i += 2
+    else:
+      usage("Can't parse options")
+
+  try:
+    config = ConfigPath(config_dir)
+  except RuntimeError:
+    usage("Can't resolve config path "+str(config_dir))
+  except Exception as e:
+    usage(e)
+
+  config_dir = None
+
+  if verbose:
+    print ('Configuration directory:',config.path,'exists:',config.exists())
+
+  try:
+    command = sys.argv[i]
+    i += 1
+  except IndexError:
+    usage("Command not found")
+
+  command_options = {}
+
+  while i < len(sys.argv):
+    if sys.argv[i].startswith('--'):
+      key = sys.argv[i]
+      i += 1
+      if i == len(sys.argv) or sys.argv[i].startswith('--'):
+        value = None
+      else:
+        value = sys.argv[i]
+        i += 1
+      command_options[key] = value
+    else:
+      usage("Can't parse command options")
+
+  if verbose:
+    print ('command:', command)
+    for k in command_options:
+      print('  ',k,command_options[k])
+
+
+  if command == 'list':
+    if not config.exists():
+      print('No projects found, configuration directory does not exist:', config.path)
+    projects = config.get_projects()
+    for p in projects:
+      print(p.label, '('+str(p.source)+')')
+    if len(projects) == 0:
+      print ('No projects found')
+ 
+  if command == 'init':
+    if not '--source' in command_options or command_options['--source'] is None:
+      usage('Missing source')
+    source = pathlib.Path(command_options['--source'])
+
+    label = source.parts[-1]
+    if '--label' in command_options:
+      label = command_options['--label']
+    if label is None:
+      usage("invalid label")
+    output = source
+    if '--output' in command_options:
+      if command_options['--output'] is None:
+        usage('Missing output')
+      output = pathlib.Path(command_options['--output'])
+
+    try:
+      p = config.create_project(label, source, output)
+    except Exception as e:
+      usage(e)
+    
+    if verbose:
+      print('label:', p.label)
+      print('source:', p.source)
+      print('output:', p.output)
+      print ('config file:', p.config_file)
+
+  if command == 'scan':
+    if not '--project' in command_options or command_options['--project'] is None:
+      usage('Missing project')
+
+    project = config.get_project(command_options['--project'])
+    if not project.valid():
+      usage("Invalid project: "+command_options['--project'])
+
+    ps = project.structure()
+    for e in ps:
+      print('Expedition:',e)
+      for ep in ps[e]:
+        if ep == 'platforms':
+          print (' ',ep)
+          for p in ps[e][ep]:
+            print ('   ',p)
+            for ds in ps[e][ep][p]:
+              print ('      ',ds)
+              for sensor in ps[e][ep][p][ds]:
+                print ('         ',sensor)
+        else:
+          print (' ',ep,ps[e][ep])
+
+
+    #files = {}
+    if verbose:
+      report_count = 0
+      report_interval = 500
+
+    # total_size = 0
+    # need_processing_size = 0
+    # need_processing_files = []
+
+    handlers = [MetaReader, HashHandler]
+    project.scan(handlers)
+
+    # for potential_file in project.project_files():
+    #   f,m = previewFile(potential_file, project, handlers)
+    #   files[f] = m
+    #   if verbose:
+    #     if len(files) >= report_count + report_interval:
+    #       print ('scanned',len(files),'files')
+    #       report_count = len(files)
+    #   if m is not None:
+    #     total_size += m['size']
+    #     if 'needs_update' in m and m['needs_update']:
+    #       need_processing_size += m['size']
+    #       need_processing_files.append(f)
+
+
+    print(len(project.need_processing_files),'(',human_readable_size(project.need_processing_size),') of',len(project.files),'(',human_readable_size(project.total_size),') need processing')
+
+  if command == 'process':
+    if not '--project' in command_options or command_options['--project'] is None:
+      usage('Missing project')
+
+    project = config.get_project(command_options['--project'])
+
+    #files = {}
+    if verbose:
+      report_count = 0
+      report_interval = 500
+
+    # total_size = 0
+    # need_processing_size = 0
+    # need_processing_files = []
+
+    preview_handlers = [MetaReader, HashHandler]
+    start_time_scanning = datetime.datetime.now()
+
+    project.scan(preview_handlers)
+
+    # for potential_file in project.project_files():
+    #   f,m = previewFile(potential_file, project, preview_handlers)
+    #   files[f] = m
+    #   if verbose:
+    #     if len(files) >= report_count + report_interval:
+    #       print ('scanned',len(files),'files')
+    #       report_count = len(files)
+    #   if m is not None:
+    #     total_size += m['size']
+    #     if 'needs_update' in m and m['needs_update']:
+    #       need_processing_size += m['size']
+    #       need_processing_files.append(f)
+    end_time_scanning = datetime.datetime.now()
+
+    if verbose:
+      print ('scanned',len(project.files),'in',(end_time_scanning-start_time_scanning).total_seconds(),'seconds')
+      print (len(project.need_processing_files),'files ('+human_readable_size(project.need_processing_size)+')','need processing out of',len(project.files),'files ('+human_readable_size(project.total_size)+')')
+
+    start_time_processing = datetime.datetime.now()
+    last_report_time = start_time_processing
+
+    handlers = [MetaReader, HashHandler, MetaSaver]
+    processed_count = 0
+    last_report_processed_count = 0
+    processed_size = 0
+    last_report_processed_size = 0
+    report_interval = datetime.timedelta(seconds=5)
+    for f in project.files:
+      m = project.files[f]
+      if m is not None and 'needs_update' in m and m['needs_update']:
+        f,m = processFile(f, project, handlers)
+        processed_count += 1
+        processed_size += m['size']
+        now = datetime.datetime.now()
+        since_last_report = now-last_report_time
+        if since_last_report > report_interval:
+          time_since_start = now-start_time_processing
+          average_processing_rate = processed_size/time_since_start.total_seconds()
+          estimated_time_remaining = datetime.timedelta(seconds=(project.need_processing_size - processed_size) / average_processing_rate)
+          percentage_complete = int(1000*processed_size/project.need_processing_size)/10.0
+          print("percent complete:", percentage_complete,"rate:",human_readable_size(average_processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
+          last_report_time = now
+
+
+  exit(0)
 
   if len(sys.argv) < 2:
     usage()
