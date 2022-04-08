@@ -17,7 +17,7 @@ class ConfigPath:
   def exists(self):
     return self.path.is_dir()
 
-  def get_projects(self) -> List[pathlib.Path]:
+  def get_projects(self) -> List[Project]:
     ret = []
     for p in self.path.glob('*'):
       proj = Project(p)
@@ -27,7 +27,9 @@ class ConfigPath:
 
 
   def create_project(self, label: str, source: pathlib.Path, output: pathlib.Path) -> Project:
-    return Project(self.path/label, source, output)
+    p = Project(self.path/label)
+    p.create(source, output)
+    return p
 
   def get_project(self, label: str) -> Project:
     return Project(self.path/label)

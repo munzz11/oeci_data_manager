@@ -2,40 +2,46 @@
 
 import pathlib
 import json
+import time
+
+from multiprocessing import Pool
 
 from data_manager_utils import resolvePath
+from file_info import FileInfo
 
-def previewFile(filename: pathlib.Path, project, handler_list):
-  meta=None
+from typing import Dict, Iterator
 
-  loader = handler_list[0](project)
-  if loader.needsProcessing(filename, meta):
-    meta = loader.process(filename, meta)
-
-  if meta is not None:
-    if len(handler_list) > 1:
-      pipeline = []
-      for h in handler_list[1:]:
-        pipeline.append(h(project))
+def previewFile(file: FileInfo, handler_list):
+  pipeline = []
+  for h in handler_list:
+    pipeline.append(h())
     
-      for processor in pipeline:
-        if processor.needsProcessing(filename, meta):
-          meta['needs_update'] = True
-  
-  return filename, meta
+  for processor in pipeline:
+    if file.source_path() is not None and processor.needsProcessing(file):
+      file.add_processor(processor)
+  return file
 
+def processFile(file: FileInfo, handler_list):
+  pipeline = []
+  for h in handler_list:
+    pipeline.append(h())
+
+  for processor in pipeline:
+    if file.needs_processing_by(processor):
+      processor.process(file)
+      file.remove_processor(processor)
+  file.save_meta()
+  return file
 
 class Project:
-  def __init__(self, config_path: pathlib.Path, source: pathlib.Path = None, output: pathlib.Path = None):
+  def __init__(self, config_path: pathlib.Path):
     self.config_path = config_path
+    self.files = {}
     self.ignore_list = []
     self.label = config_path.parts[-1]
     self.config_file = config_path/'config.json'
     self.meta_path = config_path/'meta'
     if self.config_file.exists():
-      # if we pass in a source, we want to create a new project, otherwise open an existing one
-      if source is not None:
-        raise Exception("Can't create project, config alredy exists: "+str(self.config_file))
       try:
         self.config = json.load(self.config_file.open())
         self.source = pathlib.Path(self.config['source'])
@@ -48,36 +54,57 @@ class Project:
       self.config = None
       self.source = None
       self.output = None
-      if source is not None:
-        try:
-          self.source = resolvePath(source)
-        except RuntimeError:
-          raise Exception("Can't resolve source path "+str(source))
-        if not self.source.is_dir():
-          raise Exception("Source is not a directory: "+str(self.source))
-        if output is None:
-          self.output = self.source
-        else:
-          try:
-            self.output = resolvePath(output)
-          except RuntimeError:
-            raise Exception("Can't resolve output path "+str(output))
-        self.config = {'source': str(self.source), 'output': str(self.output)}
-        self.manifest_file = self.source/'manifest.txt'
-        self.ignore_list.append(self.manifest_file)
-        if not self.config_path.is_dir():
-          self.config_path.mkdir(parents=True)
-        json.dump(self.config, self.config_file.open("w"))
 
   def valid(self):
     return self.config is not None
 
-  def project_files(self):
+  def create(self, source: pathlib.Path, output: pathlib.Path = None):
+    if self.valid():
+      raise Exception("Can't create project, config alredy exists: "+str(self.config_file))
+    try:
+      self.source = resolvePath(source)
+    except RuntimeError:
+      raise Exception("Can't resolve source path "+str(source))
+    if not self.source.is_dir():
+      raise Exception("Source is not a directory: "+str(self.source))
+    if output is None:
+      self.output = self.source
+    else:
+      try:
+        self.output = resolvePath(output)
+      except RuntimeError:
+        raise Exception("Can't resolve output path "+str(output))
+    self.config = {'source': str(self.source), 'output': str(self.output)}
+    self.manifest_file = self.source/'manifest.txt'
+    self.ignore_list.append(self.manifest_file)
+    if not self.config_path.is_dir():
+      self.config_path.mkdir(parents=True)
+    json.dump(self.config, self.config_file.open("w"))
+
+  def load(self):
+    for f in self.meta_path.glob("**/*.meta.json"):
+      local_path = f.relative_to(self.meta_path)
+      if local_path in self.files:
+        self.files[local_path].load_meta()
+      else:
+        fi = FileInfo(self, meta_path=f)
+        if fi.load_meta():
+          self.files[fi.local_path] = fi
+
+  def __call__(self) -> Iterator[FileInfo]:
+    for f in self.files:
+      yield self.files[f]
+
+  def source_files(self) -> Iterator[pathlib.Path]:
     for f in self.source.glob("**/*"):
       if f.is_file():
         yield f
+    if self.source != self.output:
+      for f in self.output.glob("**/*"):
+        if f.is_file():
+          yield f
 
-  def structure(self):
+  def structure(self) -> Dict:
     ret = {}
     expedition = self.source.parts[-1]
     ret[expedition] = {}
@@ -105,16 +132,145 @@ class Project:
 
     return ret
 
-  def scan(self, handlers):
-    self.files = {}
-    self.total_size = 0
-    self.need_processing_size = 0
-    self.need_processing_files = []
-    for potential_file in self.project_files():
-      f,m = previewFile(potential_file, self, handlers)
-      self.files[f] = m
-      if m is not None:
-        self.total_size += m['size']
-        if 'needs_update' in m and m['needs_update']:
-          self.need_processing_size += m['size']
-          self.need_processing_files.append(f)
+  def scan_source(self, progress_callback = None):
+    count = 0
+    for potential_file in self.source_files():
+      if self.source in potential_file.parents:
+        local_path = potential_file.relative_to(self.source)
+      else:
+        local_path = potential_file.relative_to(self.output)
+      if not local_path in self.files:
+        fi = FileInfo(self, local_path=local_path)
+        fi.load_meta()
+        self.files[local_path] = fi
+      self.files[local_path].update_from_source(True)
+      if progress_callback is not None:
+        count += 1
+        progress_callback(count)
+
+  def scan(self, handlers, process_count=1, progress_callback = None):
+    scanned_count = 0
+    if process_count > 1:
+      pool = Pool(processes=process_count)
+      results_list = []
+
+    for f in self.files:
+      if process_count > 1:
+        while len(results_list) >= process_count*2:
+          done_list = []
+          for r in results_list:
+            if r.ready():
+              done_list.append(r)
+          if len(done_list):
+            for d in done_list:
+              d.get()
+              scanned_count += 1
+              results_list.remove(d)
+          else:
+            time.sleep(.05)
+        results_list.append(pool.apply_async(previewFile,(self.files[f], handlers)))
+      else:
+        f = previewFile(self.files[f], handlers)
+        scanned_count += 1
+      if progress_callback is not None:
+        progress_callback(scanned_count)
+
+
+  def process(self, handlers, process_count=1, progress_callback = None):
+    processed_count = 0
+    processed_size = 0
+
+    if process_count > 1:
+      pool = Pool(processes=process_count)
+      results_list = []
+
+    for f in self.files:
+      file = self.files[f]
+      if file.needs_processing():
+        if process_count > 1:
+          while len(results_list) >= process_count*2:
+            done_list = []
+            for r in results_list:
+              if r.ready():
+                done_list.append(r)
+            if len(done_list):
+              for d in done_list:
+                f = d.get()
+                processed_count += 1
+                processed_size += f.size
+                results_list.remove(d)
+            else:
+              time.sleep(.05)
+              if progress_callback is not None:
+                if progress_callback(processed_size):
+                  return
+          results_list.append(pool.apply_async(processFile,(file, handlers)))
+        else:
+          f = processFile(file, handlers)
+          processed_count += 1
+          processed_size += f.size
+        if progress_callback is not None:
+          if progress_callback(processed_size):
+            return
+
+        
+    if process_count > 1:
+      for r in results_list:
+        r.wait()
+        f = r.get()
+        processed_count += 1
+        processed_size += f.size
+
+
+  def find_processing_path_from_raw(self, path: pathlib.Path) -> pathlib.Path:
+    ret = pathlib.Path(path.parts[0])
+    for p in path.parts[1:]:
+      if p == '02-raw':
+        ret = ret/'03-processing'
+      else:
+        ret = ret/p
+    return ret
+
+  def find_output_path(self, path: pathlib.Path) -> pathlib.Path:
+    return self.output/path.relative_to(self.source)
+
+  def find_source_path(self, local_path: pathlib.Path) -> pathlib.Path:
+    ret = self.source/local_path
+    if ret.is_file():
+      return ret
+    if self.output != self.source:
+      ret = self.output/local_path
+      if ret.is_file():
+        return ret
+    return None
+
+  def generate_file_stats(self):
+    ret = {
+      'total':{'count': 0, 'size':0},
+      'needs_processing':{'count': 0, 'size':0},
+      'new':{'count': 0, 'size':0},
+      'updated':{'count': 0, 'size':0},
+      'missing':{'count': 0}
+    }
+
+    for f in self.files:
+      file = self.files[f]
+      if not file.update_from_source():
+        ret['missing']['count'] += 1
+      else:
+        ret['total']['count'] += 1
+        ret['total']['size'] += file.size
+        if file.load_meta():
+          if not file.meta_exists:
+            ret['new']['count'] += 1
+            ret['new']['size'] += file.size
+          else:
+            if file.is_modified():
+              ret['updated']['count'] += 1
+              ret['updated']['size'] += file.size
+        if file.needs_processing():
+          ret['needs_processing']['count'] += 1
+          ret['needs_processing']['size'] += file.size
+    return ret
+
+

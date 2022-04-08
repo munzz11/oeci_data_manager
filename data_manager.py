@@ -8,16 +8,14 @@ import datetime
 import json
 import time
 
-from multiprocessing import Pool
-
-from meta_handler import MetaReader, MetaSaver
 from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
+from ros_bag_index_handler import RosBagIndexHandler
 
 from config import ConfigPath
 from project import Project
 
-from data_manager_utils import resolvePath, human_readable_size
+from data_manager_utils import human_readable_size
 
 def usage(error = None):
   if error is not None:
@@ -30,32 +28,67 @@ def usage(error = None):
   print ("  commands:")
   print ("    list     List existing projects")
   print ("    init     Initialize a new project")
-  print ("      --source source_dir   (required)")
-  print ("      --label project_label (default: top level of source dir)")
-  print ("      --output output_dir   (default: source dir)")
+  print ("      --source source_dir       (required)")
+  print ("      --label project_label     (default: top level of source dir)")
+  print ("      --output output_dir       (default: source dir)")
   print ("    scan     Scan for files needing processing")
-  print ("      --project project     (required)")
+  print ("      --project project         (required)")
+  print ("      --process_count job_count (default: 1)")
   print ("    process  Process files")
-  print ("      --project project     (required)")
-  
+  print ("      --project project         (required)")
+  print ("      --process_count job_count (default: 1)")
+  print ("    gui      Launch the user interface")
   print()
   sys.exit(1)
 
+class ScanProgress:
+  def __init__(self) -> None:
+    self.report_interval = datetime.timedelta(seconds=5)
+    self.last_report_time = datetime.datetime.now()
 
+  def __call__(self, file_count):
+    now = datetime.datetime.now()
+    if now - self.last_report_time >= self.report_interval:
+      print(file_count,'files scanned')
+      self.last_report_time = now
 
-def processFile(filename: pathlib.Path, project: Project, handler_list):
-  meta=None
+class ProcessProgress:
+  def __init__(self, need_processing_count, need_processing_size) -> None:
+    self.report_interval = datetime.timedelta(seconds=5)
+    self.start_time = datetime.datetime.now()
+    self.last_report_time = self.start_time
+    self.last_report_processed_count = 0
+    self.last_report_processed_size = 0
+    self.averaging_inteval = datetime.timedelta(seconds=30)
+    self.latest_processed_sizes = []
+    self.need_processing_count = need_processing_count
+    self.need_processing_size = need_processing_size
 
-  pipeline = []
-  for h in handler_list:
-    pipeline.append(h(project))
-
-  for processor in pipeline:
-    if processor.needsProcessing(filename, meta):
-      meta = processor.process(filename, meta)
-
-  return filename,meta
-
+  def __call__(self, processed_size):
+    now = datetime.datetime.now()
+    self.latest_processed_sizes.append((now,processed_size))
+    while len(self.latest_processed_sizes)>1 and now - self.latest_processed_sizes[1][0] > self.averaging_inteval:
+      self.latest_processed_sizes.remove(self.latest_processed_sizes[0])
+    since_last_report = now-self.last_report_time
+    if since_last_report > self.report_interval:
+      time_since_start = now-start_time_processing
+      average_processing_rate = processed_size/time_since_start.total_seconds()
+      if average_processing_rate > 0:
+        estimated_time_remaining = datetime.timedelta(seconds=(self.need_processing_size - processed_size) / average_processing_rate)
+      else:
+        estimated_time_remaining = "?"
+      percentage_complete = int(1000*processed_size/self.need_processing_size)/10.0
+      #print("percent complete:", percentage_complete,"rate:",human_readable_size(average_processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
+      self.last_report_time = now
+      if len(self.latest_processed_sizes) > 0 and now > self.latest_processed_sizes[0][0]:
+        time_since_avg_sample = now-self.latest_processed_sizes[0][0]
+        short_term_processing_rate = (processed_size-self.latest_processed_sizes[0][1])/time_since_avg_sample.total_seconds()
+        if short_term_processing_rate > 0:
+          short_term_estimated_time_remaining = datetime.timedelta(seconds=(self.need_processing_size - processed_size) / short_term_processing_rate)
+        else:
+          short_term_estimated_time_remaining = "?"
+        print("percent complete:", percentage_complete,"rate:",human_readable_size(short_term_processing_rate)+'/s',"estimated time remaining:", short_term_estimated_time_remaining, ' long term rate:', human_readable_size(average_processing_rate)+'/s',' est time rem.:', estimated_time_remaining)
+    return False
 
 if __name__ == '__main__':
 
@@ -157,6 +190,13 @@ if __name__ == '__main__':
     if not project.valid():
       usage("Invalid project: "+command_options['--project'])
 
+    process_count = 1
+    if '--process_count' in command_options:
+      try:
+        process_count = int(command_options['--process_count'])
+      except Exception as e:
+        usage('Invalid process count: '+str(e))
+
     ps = project.structure()
     for e in ps:
       print('Expedition:',e)
@@ -172,97 +212,92 @@ if __name__ == '__main__':
         else:
           print (' ',ep,ps[e][ep])
 
-
-    #files = {}
     if verbose:
-      report_count = 0
-      report_interval = 500
+      print ('loading existing info...')
+    project.load()
+    prog = None
+    if verbose:
+      prog = ScanProgress()
+      print ('scanning for new files...')
+    project.scan_source(prog)
 
-    # total_size = 0
-    # need_processing_size = 0
-    # need_processing_files = []
+    handlers = [HashHandler, RosBagIndexHandler]
+    prog = None
+    if verbose:
+      prog = ScanProgress()
+      print ('scanning for files needing processing...')
+    project.scan(handlers, process_count, prog)
 
-    handlers = [MetaReader, HashHandler]
-    project.scan(handlers)
+    if verbose:
+      print ('collecting stats...')
+    stats = project.generate_file_stats()
 
-    # for potential_file in project.project_files():
-    #   f,m = previewFile(potential_file, project, handlers)
-    #   files[f] = m
-    #   if verbose:
-    #     if len(files) >= report_count + report_interval:
-    #       print ('scanned',len(files),'files')
-    #       report_count = len(files)
-    #   if m is not None:
-    #     total_size += m['size']
-    #     if 'needs_update' in m and m['needs_update']:
-    #       need_processing_size += m['size']
-    #       need_processing_files.append(f)
-
-
-    print(len(project.need_processing_files),'(',human_readable_size(project.need_processing_size),') of',len(project.files),'(',human_readable_size(project.total_size),') need processing')
+    print(stats['needs_processing']['count'],
+          '(',human_readable_size(stats['needs_processing']['size']),') of',
+          stats['total']['count'],'(',human_readable_size(stats['total']['size']),
+          ') need processing')
+    print(stats)
 
   if command == 'process':
     if not '--project' in command_options or command_options['--project'] is None:
       usage('Missing project')
 
+    process_count = 1
+    if '--process_count' in command_options:
+      try:
+        process_count = int(command_options['--process_count'])
+      except Exception as e:
+        usage('Invalid process count: '+str(e))
+
     project = config.get_project(command_options['--project'])
 
-    #files = {}
-    if verbose:
-      report_count = 0
-      report_interval = 500
-
-    # total_size = 0
-    # need_processing_size = 0
-    # need_processing_files = []
-
-    preview_handlers = [MetaReader, HashHandler]
     start_time_scanning = datetime.datetime.now()
 
-    project.scan(preview_handlers)
+    if verbose:
+      print ('loading existing info...')
+    project.load()
+    prog = None
+    if verbose:
+      prog = ScanProgress()
+      print ('scanning for new files...')
+    project.scan_source(prog)
 
-    # for potential_file in project.project_files():
-    #   f,m = previewFile(potential_file, project, preview_handlers)
-    #   files[f] = m
-    #   if verbose:
-    #     if len(files) >= report_count + report_interval:
-    #       print ('scanned',len(files),'files')
-    #       report_count = len(files)
-    #   if m is not None:
-    #     total_size += m['size']
-    #     if 'needs_update' in m and m['needs_update']:
-    #       need_processing_size += m['size']
-    #       need_processing_files.append(f)
+    handlers = [HashHandler, RosBagIndexHandler]
+    prog = None
+    if verbose:
+      prog = ScanProgress()
+      print ('scanning for files needing processing...')
+    #project.scan(handlers, process_count, prog)
+    project.scan(handlers, 1, prog)
+
+    if verbose:
+      print ('collecting stats...')
+      stats = project.generate_file_stats()
+
+      print(stats['needs_processing']['count'],
+            '(',human_readable_size(stats['needs_processing']['size']),') of',
+            stats['total']['count'],'(',human_readable_size(stats['total']['size']),
+            ') need processing')
+      print(stats)
+
     end_time_scanning = datetime.datetime.now()
 
     if verbose:
-      print ('scanned',len(project.files),'in',(end_time_scanning-start_time_scanning).total_seconds(),'seconds')
-      print (len(project.need_processing_files),'files ('+human_readable_size(project.need_processing_size)+')','need processing out of',len(project.files),'files ('+human_readable_size(project.total_size)+')')
+      print ('scanned',stats['total']['count'],'in',(end_time_scanning-start_time_scanning).total_seconds(),'seconds')
+      print (stats['needs_processing']['count'],'files ('+human_readable_size(stats['needs_processing']['size'])+')','need processing')
 
     start_time_processing = datetime.datetime.now()
     last_report_time = start_time_processing
 
-    handlers = [MetaReader, HashHandler, MetaSaver]
-    processed_count = 0
-    last_report_processed_count = 0
-    processed_size = 0
-    last_report_processed_size = 0
-    report_interval = datetime.timedelta(seconds=5)
-    for f in project.files:
-      m = project.files[f]
-      if m is not None and 'needs_update' in m and m['needs_update']:
-        f,m = processFile(f, project, handlers)
-        processed_count += 1
-        processed_size += m['size']
-        now = datetime.datetime.now()
-        since_last_report = now-last_report_time
-        if since_last_report > report_interval:
-          time_since_start = now-start_time_processing
-          average_processing_rate = processed_size/time_since_start.total_seconds()
-          estimated_time_remaining = datetime.timedelta(seconds=(project.need_processing_size - processed_size) / average_processing_rate)
-          percentage_complete = int(1000*processed_size/project.need_processing_size)/10.0
-          print("percent complete:", percentage_complete,"rate:",human_readable_size(average_processing_rate)+'/s',"estimated time remaining:", estimated_time_remaining)
-          last_report_time = now
+    prog = None
+    if verbose:
+      prog = ProcessProgress(stats['needs_processing']['count'],stats['needs_processing']['size'])
+
+    project.process(handlers, process_count, prog)
+
+  if command == 'gui':
+    import data_manager_ui
+    data_manager_ui.launch(config)
 
 
   exit(0)
