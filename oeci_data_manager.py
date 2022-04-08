@@ -15,15 +15,15 @@ from ros_bag_index_handler import RosBagIndexHandler
 from config import ConfigPath
 from project import Project
 
-from data_manager_utils import human_readable_size
+from odm_utils import human_readable_size
 
 def usage(error = None):
   if error is not None:
     print("\nERROR:",error)
     print()
-  print ("Usage: data_manager.py [options] command [command options]")
+  print ("Usage: oeci_data_manager.py [options] command [command options]")
   print ("  options:")
-  print ("    --config-dir conf_dir   (default: ~/.data_manager)")
+  print ("    --config-dir conf_dir   (default: ~/.oeci_data_manager)")
   print ("    --verbose               (default: False)")
   print ("  commands:")
   print ("    list     List existing projects")
@@ -93,7 +93,7 @@ class ProcessProgress:
 if __name__ == '__main__':
 
   verbose = False
-  config_dir = pathlib.Path('~/.data_manager')
+  config_dir = pathlib.Path('~/.oeci_data_manager')
   
   i = 1
 
@@ -182,7 +182,7 @@ if __name__ == '__main__':
       print('output:', p.output)
       print ('config file:', p.config_file)
 
-  if command == 'scan':
+  if command == 'scan' or command == 'process':
     if not '--project' in command_options or command_options['--project'] is None:
       usage('Missing project')
 
@@ -197,60 +197,22 @@ if __name__ == '__main__':
       except Exception as e:
         usage('Invalid process count: '+str(e))
 
-    ps = project.structure()
-    for e in ps:
-      print('Expedition:',e)
-      for ep in ps[e]:
-        if ep == 'platforms':
-          print (' ',ep)
-          for p in ps[e][ep]:
-            print ('   ',p)
-            for ds in ps[e][ep][p]:
-              print ('      ',ds)
-              for sensor in ps[e][ep][p][ds]:
-                print ('         ',sensor)
-        else:
-          print (' ',ep,ps[e][ep])
-
-    if verbose:
-      print ('loading existing info...')
-    project.load()
-    prog = None
-    if verbose:
-      prog = ScanProgress()
-      print ('scanning for new files...')
-    project.scan_source(prog)
-
-    handlers = [HashHandler, RosBagIndexHandler]
-    prog = None
-    if verbose:
-      prog = ScanProgress()
-      print ('scanning for files needing processing...')
-    project.scan(handlers, process_count, prog)
-
-    if verbose:
-      print ('collecting stats...')
-    stats = project.generate_file_stats()
-
-    print(stats['needs_processing']['count'],
-          '(',human_readable_size(stats['needs_processing']['size']),') of',
-          stats['total']['count'],'(',human_readable_size(stats['total']['size']),
-          ') need processing')
-    print(stats)
-
-  if command == 'process':
-    if not '--project' in command_options or command_options['--project'] is None:
-      usage('Missing project')
-
-    process_count = 1
-    if '--process_count' in command_options:
-      try:
-        process_count = int(command_options['--process_count'])
-      except Exception as e:
-        usage('Invalid process count: '+str(e))
-
-    project = config.get_project(command_options['--project'])
-
+    if command == 'scan':
+      ps = project.structure()
+      for e in ps:
+        print('Expedition:',e)
+        for ep in ps[e]:
+          if ep == 'platforms':
+            print (' ',ep)
+            for p in ps[e][ep]:
+              print ('   ',p)
+              for ds in ps[e][ep][p]:
+                print ('      ',ds)
+                for sensor in ps[e][ep][p][ds]:
+                  print ('         ',sensor)
+          else:
+            print (' ',ep,ps[e][ep])
+    
     start_time_scanning = datetime.datetime.now()
 
     if verbose:
@@ -267,37 +229,49 @@ if __name__ == '__main__':
     if verbose:
       prog = ScanProgress()
       print ('scanning for files needing processing...')
-    #project.scan(handlers, process_count, prog)
     project.scan(handlers, 1, prog)
-
-    if verbose:
-      print ('collecting stats...')
-      stats = project.generate_file_stats()
-
-      print(stats['needs_processing']['count'],
-            '(',human_readable_size(stats['needs_processing']['size']),') of',
-            stats['total']['count'],'(',human_readable_size(stats['total']['size']),
-            ') need processing')
-      print(stats)
 
     end_time_scanning = datetime.datetime.now()
 
     if verbose:
-      print ('scanned',stats['total']['count'],'in',(end_time_scanning-start_time_scanning).total_seconds(),'seconds')
-      print (stats['needs_processing']['count'],'files ('+human_readable_size(stats['needs_processing']['size'])+')','need processing')
+      print ('scan time:', end_time_scanning-start_time_scanning)
+      print ('collecting stats...')
 
-    start_time_processing = datetime.datetime.now()
-    last_report_time = start_time_processing
+    if verbose or command == 'scan':
+      stats = project.generate_file_stats()
 
-    prog = None
-    if verbose:
-      prog = ProcessProgress(stats['needs_processing']['count'],stats['needs_processing']['size'])
+      for label in stats:
+        if 'size' in stats[label]:
+          print(label,stats[label]['count'],'('+human_readable_size(stats[label]['size'])+')')
+        else:
+          print(label,stats[label]['count'])
 
-    project.process(handlers, process_count, prog)
+    if command == 'process':
+
+
+      if verbose:
+        print ('scanned',stats['total']['count'],'in',(end_time_scanning-start_time_scanning).total_seconds(),'seconds')
+        print (stats['needs_processing']['count'],'files ('+human_readable_size(stats['needs_processing']['size'])+')','need processing')
+
+      start_time_processing = datetime.datetime.now()
+      last_report_time = start_time_processing
+
+      prog = None
+      if verbose:
+        prog = ProcessProgress(stats['needs_processing']['count'],stats['needs_processing']['size'])
+
+      project.process(handlers, process_count, prog)
+      
+      end_time_processing = datetime.datetime.now()
+      if verbose:
+        print('processing time:', end_time_processing - start_time_processing)
+        print('total time:', end_time_processing - start_time_scanning)
+
+
 
   if command == 'gui':
-    import data_manager_ui
-    data_manager_ui.launch(config)
+    import odm_ui
+    odm_ui.launch(config)
 
 
   exit(0)

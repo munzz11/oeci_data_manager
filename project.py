@@ -6,7 +6,7 @@ import time
 
 from multiprocessing import Pool
 
-from data_manager_utils import resolvePath
+from odm_utils import resolvePath
 from file_info import FileInfo
 
 from typing import Dict, Iterator
@@ -91,9 +91,10 @@ class Project:
         if fi.load_meta():
           self.files[fi.local_path] = fi
 
-  def __call__(self) -> Iterator[FileInfo]:
+  def __call__(self, path: pathlib.Path = None) -> Iterator[FileInfo]:
     for f in self.files:
-      yield self.files[f]
+      if path is None or path in pathlib.Path(f).parents:
+        yield self.files[f]
 
   def source_files(self) -> Iterator[pathlib.Path]:
     for f in self.source.glob("**/*"):
@@ -244,7 +245,7 @@ class Project:
         return ret
     return None
 
-  def generate_file_stats(self):
+  def generate_file_stats(self, path: pathlib.Path = None):
     ret = {
       'total':{'count': 0, 'size':0},
       'needs_processing':{'count': 0, 'size':0},
@@ -253,8 +254,7 @@ class Project:
       'missing':{'count': 0}
     }
 
-    for f in self.files:
-      file = self.files[f]
+    for file in self(path):
       if not file.update_from_source():
         ret['missing']['count'] += 1
       else:

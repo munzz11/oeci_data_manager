@@ -3,7 +3,7 @@
 import pathlib
 from typing import List
 
-from data_manager_utils import resolvePath
+from odm_utils import resolvePath
 
 from project import Project
 
