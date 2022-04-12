@@ -136,3 +136,12 @@ class FileInfo:
 
   def needs_processing(self):
     return len(self.pending_processors) > 0
+
+  def is_newer_than(self, other_file) -> Boolean:
+    if self.modify_time is None:
+      self.update_from_source()
+    if other_file.modify_time is None:
+      other_file.update_from_source()
+    if self.file_exists and other_file.file_exists:
+      return self.modify_time > other_file.modify_time
+    

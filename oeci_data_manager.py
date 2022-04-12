@@ -11,6 +11,7 @@ import time
 from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
 from ros_bag_index_handler import RosBagIndexHandler
+from drix_deployments_handler import DrixDeploymentsHandler
 
 from config import ConfigPath
 from project import Project
@@ -41,7 +42,7 @@ def usage(error = None):
   print()
   sys.exit(1)
 
-class ScanProgress:
+class SourceScanProgress:
   def __init__(self) -> None:
     self.report_interval = datetime.timedelta(seconds=5)
     self.last_report_time = datetime.datetime.now()
@@ -51,9 +52,24 @@ class ScanProgress:
     if now - self.last_report_time >= self.report_interval:
       print(file_count,'files scanned')
       self.last_report_time = now
+    return False
+
+
+class ScanProgress:
+  def __init__(self, need_processing_count) -> None:
+    self.report_interval = datetime.timedelta(seconds=5)
+    self.last_report_time = datetime.datetime.now()
+    self.need_processing_count = need_processing_count
+
+  def __call__(self, file_count):
+    now = datetime.datetime.now()
+    if now - self.last_report_time >= self.report_interval:
+      print(file_count,'files scanned of', self.need_processing_count)
+      self.last_report_time = now
+    return False
 
 class ProcessProgress:
-  def __init__(self, need_processing_count, need_processing_size) -> None:
+  def __init__(self, need_processing_size) -> None:
     self.report_interval = datetime.timedelta(seconds=5)
     self.start_time = datetime.datetime.now()
     self.last_report_time = self.start_time
@@ -61,7 +77,6 @@ class ProcessProgress:
     self.last_report_processed_size = 0
     self.averaging_inteval = datetime.timedelta(seconds=30)
     self.latest_processed_sizes = []
-    self.need_processing_count = need_processing_count
     self.need_processing_size = need_processing_size
 
   def __call__(self, processed_size):
@@ -220,14 +235,14 @@ if __name__ == '__main__':
     project.load()
     prog = None
     if verbose:
-      prog = ScanProgress()
+      prog = SourceScanProgress()
       print ('scanning for new files...')
     project.scan_source(prog)
 
-    handlers = [HashHandler, RosBagIndexHandler]
+    handlers = [HashHandler, RosBagIndexHandler, RosBagHandler, DrixDeploymentsHandler]
     prog = None
     if verbose:
-      prog = ScanProgress()
+      prog = ScanProgress(len(project.files))
       print ('scanning for files needing processing...')
     project.scan(handlers, 1, prog)
 
@@ -258,7 +273,7 @@ if __name__ == '__main__':
 
       prog = None
       if verbose:
-        prog = ProcessProgress(stats['needs_processing']['count'],stats['needs_processing']['size'])
+        prog = ProcessProgress(stats['needs_processing']['size'])
 
       project.process(handlers, process_count, prog)
       

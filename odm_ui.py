@@ -15,9 +15,10 @@ from file_info import FileInfo
 from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
 from ros_bag_index_handler import RosBagIndexHandler
+from drix_deployments_handler import DrixDeploymentsHandler
 
 class OECIDataManager(QMainWindow):
-  handlers = [HashHandler, RosBagIndexHandler, RosBagHandler]
+  handlers = [HashHandler, RosBagIndexHandler, RosBagHandler, DrixDeploymentsHandler]
 
   def __init__(self):
     super().__init__()
@@ -30,7 +31,6 @@ class OECIDataManager(QMainWindow):
     self.fileTreeWidget.itemSelectionChanged.connect(self.on_file_tree_selection_changed)
     self.fileTreeWidget.setStyleSheet('QTreeWidget#fileTreeWidget::item {background-color: none;}')
     self.progress_dialog = None
-    self.need_processing_size = 0
 
   def set_config(self, config):
     self.config = config
@@ -51,26 +51,46 @@ class OECIDataManager(QMainWindow):
           if p.label == d.textValue():
             self.set_project(p)
 
+  def on_scan_progress(self, scan_count):
+    if self.progress_dialog is not None:
+      self.progress_dialog.setValue(scan_count)
+      if self.progress_dialog.wasCanceled():
+        return True
+      #QApplication.processEvents()
+    return False
+
   def on_scan_clicked(self):
+    if self.progress_dialog is not None:
+      return
     i = self.fileTreeWidget.topLevelItem(0)
     if i is not None:
       project = i.data(0,100)
       QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
       project.scan_source()
-      project.scan(OECIDataManager.handlers)
+      stats = project.generate_file_stats()
+      total_count = stats['total']['count']
+      self.progress_dialog = QProgressDialog()
+      self.progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+      self.progress_dialog.setMaximum(total_count)
+      self.progress_dialog.show()
+      project.scan(OECIDataManager.handlers, 1, self.on_scan_progress)
+      self.progress_dialog.cancel()
+      self.progress_dialog = None
       self.update_stats(project, self.projectStats)
       self.update_files()
       QApplication.restoreOverrideCursor()
 
   def on_process_progress(self, processed_size):
     if self.progress_dialog is not None:
-      self.progress_dialog.setValue(processed_size)
+      self.progress_dialog.setValue(processed_size/1024)
       if self.progress_dialog.wasCanceled():
         return True
-      QApplication.processEvents()
+      #QApplication.processEvents()
     return False
 
   def on_process_clicked(self):
+    if self.progress_dialog is not None:
+      return
     i = self.fileTreeWidget.topLevelItem(0)
     if i is not None:
       project = i.data(0,100)
@@ -78,9 +98,10 @@ class OECIDataManager(QMainWindow):
       pcount = self.processCountSpinBox.value()
       print(pcount, 'jobs')
       stats = project.generate_file_stats()
-      self.need_processing_size = stats['needs_processing']['size']
+      need_processing_size = stats['needs_processing']['size']
       self.progress_dialog = QProgressDialog()
-      self.progress_dialog.setMaximum(self.need_processing_size)
+      self.progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+      self.progress_dialog.setMaximum(need_processing_size/1024)
       self.progress_dialog.show()
       project.process(OECIDataManager.handlers, pcount, self.on_process_progress)
       self.progress_dialog.cancel()
@@ -163,7 +184,7 @@ class OECIDataManager(QMainWindow):
       self.selectedDisplayLabel.setText(str(d))
       self.update_stats(self.project(), self.selectedStats, d)
     elif isinstance(d, FileInfo):
-      self.selectedDisplayLabel.setText(str(d.local_path))
+      self.selectedDisplayLabel.setText(str(d.local_path.name))
       self.selectedStats.clear_stats()
       if d.meta is not None:
         self.populate_meta_tree(self.metaTreeWidget, d.meta)

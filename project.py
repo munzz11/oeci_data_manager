@@ -3,6 +3,7 @@
 import pathlib
 import json
 import time
+import datetime
 
 from multiprocessing import Pool
 
@@ -17,8 +18,9 @@ def previewFile(file: FileInfo, handler_list):
     pipeline.append(h())
     
   for processor in pipeline:
-    if file.source_path() is not None and processor.needsProcessing(file):
-      file.add_processor(processor)
+    if file.source_path() is not None:
+      if processor.needsProcessing(file):
+        file.add_processor(processor)
   return file
 
 def processFile(file: FileInfo, handler_list):
@@ -54,6 +56,8 @@ class Project:
       self.config = None
       self.source = None
       self.output = None
+
+    self.progress_interval = datetime.timedelta(seconds=0.5)
 
   def valid(self):
     return self.config is not None
@@ -96,6 +100,10 @@ class Project:
       if path is None or path in pathlib.Path(f).parents:
         yield self.files[f]
 
+  def get_fileinfo(self, local_path: pathlib.Path) -> FileInfo:
+    if local_path in self.files:
+      return self.files[local_path]
+
   def source_files(self) -> Iterator[pathlib.Path]:
     for f in self.source.glob("**/*"):
       if f.is_file():
@@ -134,7 +142,9 @@ class Project:
     return ret
 
   def scan_source(self, progress_callback = None):
-    count = 0
+    if progress_callback is not None:
+      count = 0
+      last_report_time = datetime.datetime.now()
     for potential_file in self.source_files():
       if self.source in potential_file.parents:
         local_path = potential_file.relative_to(self.source)
@@ -147,10 +157,17 @@ class Project:
       self.files[local_path].update_from_source(True)
       if progress_callback is not None:
         count += 1
-        progress_callback(count)
+        now = datetime.datetime.now()
+        if now - last_report_time > self.progress_interval:
+          progress_callback(count)
+          last_report_time = now
 
   def scan(self, handlers, process_count=1, progress_callback = None):
     scanned_count = 0
+
+    if progress_callback is not None:
+      last_report_time = datetime.datetime.now()
+
     if process_count > 1:
       pool = Pool(processes=process_count)
       results_list = []
@@ -174,8 +191,16 @@ class Project:
         f = previewFile(self.files[f], handlers)
         scanned_count += 1
       if progress_callback is not None:
-        progress_callback(scanned_count)
-
+        now = datetime.datetime.now()
+        if now - last_report_time > self.progress_interval:
+          if progress_callback(scanned_count):
+            return
+          last_report_time = now
+    if process_count > 1:
+      for r in results_list:
+        r.wait()
+        f = r.get()
+        scanned_count += 1
 
   def process(self, handlers, process_count=1, progress_callback = None):
     processed_count = 0
