@@ -22,6 +22,8 @@ class DrixDeploymentsHandler:
         deployments_meta = file.get_meta_value(self, 'deployments')
 
       deployments_info = json.load(file.source_path().open())
+      print(deployments_info)
+      return False
       need_processing = False
       for di in deployments_info:
         for dr in deployments_info[di]:
