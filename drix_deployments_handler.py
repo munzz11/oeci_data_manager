@@ -30,6 +30,7 @@ class DrixDeploymentsHandler:
         end_time = datetime.datetime.fromisoformat(d['end'])
         drix_bagfiles = []
         robobox_bagfiles = []
+        p11_bagfiles = []
         for f in file.project(platform):
           try:
             f_start_time = datetime.datetime.fromtimestamp(f.meta['RosBagHandler']['start_time'])
@@ -39,6 +40,8 @@ class DrixDeploymentsHandler:
                 robobox_bagfiles.append(f)
               elif 'DRIX' in f.local_path.name and f.local_path.parts[-2] == 'mission_logs':
                 drix_bagfiles.append(f)
+              elif 'project11' in f.local_path.name:
+                p11_bagfiles.append(f)
           except:
             pass
         if deployments_meta is None:
@@ -92,6 +95,31 @@ class DrixDeploymentsHandler:
         for d in drix_bagfiles:
           drix_sources.append(str(d.local_path))
         deployments_meta[deployment_id]['drix_sources'] = drix_sources
+
+        p11_outpath = platform/'03-processing/drix'/(deployment_id+'_project11.bag')
+        deployments_meta[deployment_id]['project11_outpath'] = str(p11_outpath)
+        p11_outfile = file.project.get_fileinfo(p11_outpath)
+        if p11_outfile is None:
+          need_processing = True
+        else:
+          p11_outfile.update_from_source()
+          if len(p11_bagfiles):
+            if not p11_outfile.file_exists:
+              need_processing = True
+            else:
+              if 'project11_sources' in deployments_meta[deployment_id]:
+                for s in p11_bagfiles:
+                  if not str(s) in deployments_meta[deployment_id]['project11_sources']:
+                    need_processing = True
+                    break
+                  if file.project.get_fileinfo(s).is_newer_than(p11_outfile):
+                    need_processing = True
+                    break
+        p11_sources = []
+        for d in p11_bagfiles:
+          p11_sources.append(str(d.local_path))
+        deployments_meta[deployment_id]['project11_sources'] = p11_sources
+
         file.update_meta_value(self,'deployments', deployments_meta)
 
       if need_processing:
@@ -127,5 +155,7 @@ class DrixDeploymentsHandler:
               self.merge_bags(file, deployment['robobox_outpath'], start_time, end_time,deployment['robobox_sources'])
             if 'drix_outpath' in deployment and 'drix_sources' in deployment and len(deployment['drix_sources']):
               self.merge_bags(file, deployment['drix_outpath'], start_time, end_time,deployment['drix_sources'])
+            if 'project11_outpath' in deployment and 'project11_sources' in deployment and len(deployment['project11_sources']):
+              self.merge_bags(file, deployment['project11_outpath'], start_time, end_time,deployment['project11_sources'])
 
     return file
