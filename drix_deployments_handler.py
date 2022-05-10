@@ -23,79 +23,76 @@ class DrixDeploymentsHandler:
 
       deployments_info = json.load(file.source_path().open())
       print(deployments_info)
-      return False
       need_processing = False
-      for di in deployments_info:
-        for dr in deployments_info[di]:
-          for d in deployments_info[di][dr]:
-            for deployment_id in d:
-              start_time = datetime.datetime.fromisoformat(d[deployment_id][0])
-              end_time = datetime.datetime.fromisoformat(d[deployment_id][1])
-              drix_bagfiles = []
-              robobox_bagfiles = []
-              for f in file.project(platform):
-                try:
-                  f_start_time = datetime.datetime.fromtimestamp(f.meta['RosBagHandler']['start_time'])
-                  f_end_time = datetime.datetime.fromtimestamp(f.meta['RosBagHandler']['end_time'])
-                  if f_start_time < end_time and f_end_time > start_time:
-                    if 'ROBOBOX' in f.local_path.name:
-                      robobox_bagfiles.append(f)
-                    elif 'DRIX' in f.local_path.name and f.local_path.parts[-2] == 'mission_logs':
-                      drix_bagfiles.append(f)
-                except:
-                  pass
-              if deployments_meta is None:
-                deployments_meta = {}
-              if not deployment_id in deployments_meta:
-                deployments_meta[deployment_id] = {}
-              robobox_outpath = platform/'03-processing/drix'/(deployment_id+'_ROBOBOX.bag')
-              deployments_meta[deployment_id]['robobox_outpath'] = str(robobox_outpath)
-              robobox_outfile = file.project.get_fileinfo(robobox_outpath)
-              if robobox_outfile is None:
-                need_processing = True
-              else:
-                robobox_outfile.update_from_source()
-                if len(robobox_bagfiles):
-                  if not robobox_outfile.file_exists:
+      for d in deployments_info:
+        deployment_id = d['name']
+        start_time = datetime.datetime.fromisoformat(d['begin'])
+        end_time = datetime.datetime.fromisoformat(d['end'])
+        drix_bagfiles = []
+        robobox_bagfiles = []
+        for f in file.project(platform):
+          try:
+            f_start_time = datetime.datetime.fromtimestamp(f.meta['RosBagHandler']['start_time'])
+            f_end_time = datetime.datetime.fromtimestamp(f.meta['RosBagHandler']['end_time'])
+            if f_start_time < end_time and f_end_time > start_time:
+              if 'ROBOBOX' in f.local_path.name:
+                robobox_bagfiles.append(f)
+              elif 'DRIX' in f.local_path.name and f.local_path.parts[-2] == 'mission_logs':
+                drix_bagfiles.append(f)
+          except:
+            pass
+        if deployments_meta is None:
+          deployments_meta = {}
+        if not deployment_id in deployments_meta:
+          deployments_meta[deployment_id] = {}
+        robobox_outpath = platform/'03-processing/drix'/(deployment_id+'_ROBOBOX.bag')
+        deployments_meta[deployment_id]['robobox_outpath'] = str(robobox_outpath)
+        robobox_outfile = file.project.get_fileinfo(robobox_outpath)
+        if robobox_outfile is None:
+          need_processing = True
+        else:
+          robobox_outfile.update_from_source()
+          if len(robobox_bagfiles):
+            if not robobox_outfile.file_exists:
+              need_processing = True
+            else:
+              if 'robobox_sources' in deployments_meta[deployment_id]:
+                for s in robobox_bagfiles:
+                  if not str(s) in deployments_meta[deployment_id]['robobox_sources']:
                     need_processing = True
-                  else:
-                    if 'robobox_sources' in deployments_meta[deployment_id]:
-                      for s in robobox_bagfiles:
-                        if not str(s) in deployments_meta[deployment_id]['robobox_sources']:
-                          need_processing = True
-                          break
-                        if file.project.get_fileinfo(s).is_newer_than(robobox_outfile):
-                          need_processing = True
-                          break
-              robobox_sources = []
-              for r in robobox_bagfiles:
-                robobox_sources.append(str(r.local_path))
-              deployments_meta[deployment_id]['robobox_sources'] = robobox_sources
+                    break
+                  if file.project.get_fileinfo(s).is_newer_than(robobox_outfile):
+                    need_processing = True
+                    break
+        robobox_sources = []
+        for r in robobox_bagfiles:
+          robobox_sources.append(str(r.local_path))
+        deployments_meta[deployment_id]['robobox_sources'] = robobox_sources
 
-              drix_outpath = platform/'03-processing/drix'/(deployment_id+'_DRIX.bag')
-              deployments_meta[deployment_id]['drix_outpath'] = str(drix_outpath)
-              drix_outfile = file.project.get_fileinfo(drix_outpath)
-              if drix_outfile is None:
-                need_processing = True
-              else:
-                drix_outfile.update_from_source()
-                if len(drix_bagfiles):
-                  if not drix_outfile.file_exists:
+        drix_outpath = platform/'03-processing/drix'/(deployment_id+'_DRIX.bag')
+        deployments_meta[deployment_id]['drix_outpath'] = str(drix_outpath)
+        drix_outfile = file.project.get_fileinfo(drix_outpath)
+        if drix_outfile is None:
+          need_processing = True
+        else:
+          drix_outfile.update_from_source()
+          if len(drix_bagfiles):
+            if not drix_outfile.file_exists:
+              need_processing = True
+            else:
+              if 'drix_sources' in deployments_meta[deployment_id]:
+                for s in drix_bagfiles:
+                  if not str(s) in deployments_meta[deployment_id]['drix_sources']:
                     need_processing = True
-                  else:
-                    if 'drix_sources' in deployments_meta[deployment_id]:
-                      for s in drix_bagfiles:
-                        if not str(s) in deployments_meta[deployment_id]['drix_sources']:
-                          need_processing = True
-                          break
-                        if file.project.get_fileinfo(s).is_newer_than(drix_outfile):
-                          need_processing = True
-                          break
-              drix_sources = []
-              for d in drix_bagfiles:
-                drix_sources.append(str(d.local_path))
-              deployments_meta[deployment_id]['drix_sources'] = drix_sources
-      file.update_meta_value(self,'deployments', deployments_meta)
+                    break
+                  if file.project.get_fileinfo(s).is_newer_than(drix_outfile):
+                    need_processing = True
+                    break
+        drix_sources = []
+        for d in drix_bagfiles:
+          drix_sources.append(str(d.local_path))
+        deployments_meta[deployment_id]['drix_sources'] = drix_sources
+        file.update_meta_value(self,'deployments', deployments_meta)
 
       if need_processing:
         return True
