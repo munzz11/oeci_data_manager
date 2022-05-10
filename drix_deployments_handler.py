@@ -117,17 +117,15 @@ class DrixDeploymentsHandler:
       if file.has_meta_value(self, 'deployments'):
         deployments_info = json.load(file.source_path().open())
         deployments_meta = file.get_meta_value(self, 'deployments')
-        for di in deployments_info:
-          for dr in deployments_info[di]:
-            for d in deployments_info[di][dr]:
-              for deployment_id in d:
-                start_time = datetime.datetime.fromisoformat(d[deployment_id][0])
-                end_time = datetime.datetime.fromisoformat(d[deployment_id][1])
-                if deployment_id in deployments_meta:
-                  deployment = deployments_meta[deployment_id]
-                  if 'robobox_outpath' in deployment and 'robobox_sources' in deployment and len(deployment['robobox_sources']):
-                    self.merge_bags(file, deployment['robobox_outpath'], start_time, end_time,deployment['robobox_sources'])
-                  if 'drix_outpath' in deployment and 'drix_sources' in deployment and len(deployment['drix_sources']):
-                    self.merge_bags(file, deployment['drix_outpath'], start_time, end_time,deployment['drix_sources'])
+        for d in deployments_info:
+          deployment_id = d['name']
+          start_time = datetime.datetime.fromisoformat(d['begin'])
+          end_time = datetime.datetime.fromisoformat(d['end'])
+          if deployment_id in deployments_meta:
+            deployment = deployments_meta[deployment_id]
+            if 'robobox_outpath' in deployment and 'robobox_sources' in deployment and len(deployment['robobox_sources']):
+              self.merge_bags(file, deployment['robobox_outpath'], start_time, end_time,deployment['robobox_sources'])
+            if 'drix_outpath' in deployment and 'drix_sources' in deployment and len(deployment['drix_sources']):
+              self.merge_bags(file, deployment['drix_outpath'], start_time, end_time,deployment['drix_sources'])
 
     return file
