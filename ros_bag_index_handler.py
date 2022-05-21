@@ -40,11 +40,7 @@ class RosBagIndexHandler:
 
       if not file.get_meta_value(self,'indexed'):
         try:
-          outfilename = file.local_path
-          if file.local_path.suffix == '.active':
-            outfilename = file.local_path.parent/file.local_path.stem
-          else:
-            outfilename = file.local_path.parent/(file.local_path.stem+'.indexed.bag')
+          outfilename = file.local_path.parent/(file.local_path.stem+'.indexed.bag')
           local_outfn = outfilename
           outfilename = file.project.output/outfilename
           if outfilename.is_file():
