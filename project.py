@@ -303,8 +303,8 @@ class Project:
     manifest = []
     for f in sorted(self.files):
       fi = self.files[f]
-      if fi.has_meta_value(HashHandler, 'hash'):
-        manifest.append((f,fi.get_meta_value(HashHandler,'hash')))
+      if fi.meta is not None and 'HashHandler' in fi.meta:
+        manifest.append((f,fi.meta['HashHandler']['hash']))
       else:
         print('missing hash:', f)
         manifest.append((f,''))
