@@ -11,7 +11,7 @@ from hash_handler import HashHandler
 from odm_utils import resolvePath
 from file_info import FileInfo
 
-from typing import Dict, Iterator
+from typing import Dict, Iterator, List
 
 def previewFile(file: FileInfo, handler_list):
   pipeline = []
@@ -140,6 +140,13 @@ class Project:
 
     ret[expedition]['platforms'] = platforms
 
+    return ret
+
+  def platforms(self) -> List:
+    ret = []
+    for p in self.source.glob('*'):
+      if p.is_dir():
+        ret.append(p.parts[-1])
     return ret
 
   def scan_source(self, progress_callback = None):
@@ -303,11 +310,12 @@ class Project:
     manifest = []
     for f in sorted(self.files):
       fi = self.files[f]
-      if fi.meta is not None and 'HashHandler' in fi.meta:
-        manifest.append((f,fi.meta['HashHandler']['hash']))
-      else:
-        print('missing hash:', f)
-        manifest.append((f,''))
+      if fi.status() != 'missing':
+        if fi.meta is not None and 'HashHandler' in fi.meta:
+          manifest.append((f,fi.meta['HashHandler']['hash']))
+        else:
+          print('missing hash:', f)
+          manifest.append((f,''))
     manifest_file = open(self.find_output_path(self.manifest_file),'w')
     for f in manifest:
       if f[0] != self.manifest_file:

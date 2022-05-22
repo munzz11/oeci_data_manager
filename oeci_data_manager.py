@@ -11,7 +11,7 @@ import time
 from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
 from ros_bag_index_handler import RosBagIndexHandler
-from drix_deployments_handler import DrixDeploymentsHandler
+from drix_deployments import DrixDeployments
 
 from config import ConfigPath
 from project import Project
@@ -239,7 +239,7 @@ if __name__ == '__main__':
       print ('scanning for new files...')
     project.scan_source(prog)
 
-    handlers = [HashHandler, RosBagIndexHandler, RosBagHandler, DrixDeploymentsHandler]
+    handlers = [HashHandler, RosBagIndexHandler, RosBagHandler]
     prog = None
     if verbose:
       prog = ScanProgress(len(project.files))
@@ -283,7 +283,8 @@ if __name__ == '__main__':
         print('total time:', end_time_processing - start_time_scanning)
 
       project.generate_manifest()
-
+      dgen = DrixDeployments(project)
+      dgen.generate()
 
 
   if command == 'gui':

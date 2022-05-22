@@ -15,10 +15,10 @@ from file_info import FileInfo
 from hash_handler import HashHandler
 from ros_bag_handler import RosBagHandler
 from ros_bag_index_handler import RosBagIndexHandler
-from drix_deployments_handler import DrixDeploymentsHandler
+from drix_deployments import DrixDeployments
 
 class OECIDataManager(QMainWindow):
-  handlers = [HashHandler, RosBagIndexHandler, RosBagHandler, DrixDeploymentsHandler]
+  handlers = [HashHandler, RosBagIndexHandler, RosBagHandler]
 
   def __init__(self):
     super().__init__()
@@ -104,6 +104,11 @@ class OECIDataManager(QMainWindow):
       self.progress_dialog.setMaximum(need_processing_size/1024)
       self.progress_dialog.show()
       project.process(OECIDataManager.handlers, pcount, self.on_process_progress)
+      
+      project.generate_manifest()
+      dgen = DrixDeployments(project)
+      dgen.generate()
+
       self.progress_dialog.cancel()
       self.progress_dialog = None
       self.update_stats(project, self.projectStats)

@@ -21,7 +21,6 @@ class RosBagHandler:
 
   def needsProcessing(self, file: FileInfo):
     if file.local_path.suffix == '.bag':
-      return True
       if file.has_meta_value(self, 'start_time') and not file.is_modified():
         return False
       if file.meta is not None and 'RosBagIndexHandler' in file.meta:
@@ -75,7 +74,7 @@ class RosBagHandler:
               fix['altitude'] = 0.0
               tracks[vehicle].append(fix)
               last_report_times[vehicle] = msg.header.stamp
-        elif topic in ('/project11/mesobot/nav/position', '/project11/nui/nav/position'):
+        elif topic in ('/project11/mesobot/nav/position','/project11/nui/nav/position'):
           if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
               fix = {'timestamp': msg.header.stamp.to_sec()}
               fix['latitude'] = msg.pose.position.latitude
@@ -83,6 +82,14 @@ class RosBagHandler:
               fix['altitude'] = msg.pose.position.altitude
               tracks[vehicle].append(fix)
               last_report_times[vehicle] = msg.header.stamp
+        # elif topic in ('/project11/nui/nav/position',):
+        #   if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
+        #       fix = {'timestamp': msg.header.stamp.to_sec()}
+        #       fix['latitude'] = msg.position.latitude
+        #       fix['longitude'] = msg.position.longitude
+        #       fix['altitude'] = msg.position.altitude
+        #       tracks[vehicle].append(fix)
+        #       last_report_times[vehicle] = msg.header.stamp
         else:
           if msg.status.status >= 0:
             if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
