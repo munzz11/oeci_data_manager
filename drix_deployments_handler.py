@@ -138,13 +138,15 @@ class DrixDeploymentsHandler:
     command.append(str(end_time.timestamp()))
     for s in sources:
       command.append(file.project.find_source_path(pathlib.Path(s)))
-    subprocess.run(command)
+    #subprocess.run(command)
+    return command
 
   def process(self, file: FileInfo) -> FileInfo:
     if self.needsProcessing(file):
       if file.has_meta_value(self, 'deployments'):
         deployments_info = json.load(file.source_path().open())
         deployments_meta = file.get_meta_value(self, 'deployments')
+        bag_merge_commands = []
         for d in deployments_info:
           deployment_id = d['name']
           start_time = datetime.datetime.fromisoformat(d['begin'])
@@ -152,10 +154,10 @@ class DrixDeploymentsHandler:
           if deployment_id in deployments_meta:
             deployment = deployments_meta[deployment_id]
             if 'robobox_outpath' in deployment and 'robobox_sources' in deployment and len(deployment['robobox_sources']):
-              self.merge_bags(file, deployment['robobox_outpath'], start_time, end_time,deployment['robobox_sources'])
+              bag_merge_commands.append(self.merge_bags(file, deployment['robobox_outpath'], start_time, end_time,deployment['robobox_sources']))
             if 'drix_outpath' in deployment and 'drix_sources' in deployment and len(deployment['drix_sources']):
-              self.merge_bags(file, deployment['drix_outpath'], start_time, end_time,deployment['drix_sources'])
+              bag_merge_commands.append(self.merge_bags(file, deployment['drix_outpath'], start_time, end_time,deployment['drix_sources']))
             if 'project11_outpath' in deployment and 'project11_sources' in deployment and len(deployment['project11_sources']):
-              self.merge_bags(file, deployment['project11_outpath'], start_time, end_time,deployment['project11_sources'])
+              bag_merge_commands.append(self.merge_bags(file, deployment['project11_outpath'], start_time, end_time,deployment['project11_sources']))
 
     return file
