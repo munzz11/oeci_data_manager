@@ -6,6 +6,7 @@ import time
 import datetime
 
 from multiprocessing import Pool
+from hash_handler import HashHandler
 
 from odm_utils import resolvePath
 from file_info import FileInfo
@@ -297,5 +298,20 @@ class Project:
           ret['needs_processing']['count'] += 1
           ret['needs_processing']['size'] += file.size
     return ret
+
+  def generate_manifest(self):
+    manifest = []
+    for f in sorted(self.files):
+      fi = self.files[f]
+      if fi.has_meta_value(HashHandler, 'hash'):
+        manifest.append((f,fi.get_meta_value(HashHandler,'hash')))
+      else:
+        print('missing hash:', f)
+        manifest.append((f,''))
+    manifest_file = open(self.find_output_path(self.manifest_file),'w')
+    for f in manifest:
+      if f[0] != self.manifest_file:
+        manifest_file.write(str(f[1])+'  '+str(f[0])+'\n')
+    manifest_file.close() 
 
 

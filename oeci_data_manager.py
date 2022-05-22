@@ -282,6 +282,8 @@ if __name__ == '__main__':
         print('processing time:', end_time_processing - start_time_processing)
         print('total time:', end_time_processing - start_time_scanning)
 
+      project.generate_manifest()
+
 
 
   if command == 'gui':
