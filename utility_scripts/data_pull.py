@@ -1,6 +1,5 @@
 #!/bin/bash
 
-ARCHIVE='/home/field/data/mnt/external_drive/archive'
 EXPEDITION="DX082303"
 RAW="/home/field/robonuc_docs/NA155/${EXPEDITION}/drix08/02-raw"
 #RAW="/home/field/scratch"
@@ -12,6 +11,7 @@ ECHOIP='192.168.8.180'
 #ECHOPORT='13001'
 #DRYRUN='--dry-run'
 DRYRUN=''
+ARCHIVE='/home/field/data/mnt/external_drive/archive'
 
 # A failed experiment to filter data by date/time so we only archive
 # data while deployed. Could not figure out how to get the paths right
