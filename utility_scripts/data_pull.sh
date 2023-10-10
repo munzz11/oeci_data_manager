@@ -1,17 +1,48 @@
 #!/bin/bash
 
+### Usage:
+#
+##  Test pull of the data over a wired Ethernet connection to the boat.
+#  ./data_pull.sh dryrun
+## Pull of the data over a wired Ethernet connection to the boat.
+#  ./data_pull.sh
+#  ./data_pull.sh wire
+## Pull of the data over the mbr
+#  ./data_pull.sh mbr
+## Pull of the data over wifi
+#  ./data_pull.sh wifi
+
+### EDIT THIS ####
+# Path to raw data in operator station archive (robonuc)
 EXPEDITION="DX082303"
-RAW="/home/field/robonuc_docs/NA155/${EXPEDITION}/drix08/02-raw"
-#RAW="/home/field/scratch"
-ECHOIP='192.168.8.180'
-#ECHOIP='172.16.11.8'
-#ECHOIP='172.16.10.8'
-#ECHOPORT='13001'
-#ECHOIP='172.16.10.8'
-#ECHOPORT='13001'
-#DRYRUN='--dry-run'
-DRYRUN=''
+CRUISE="NA155"
+RAW="/home/field/robonuc_docs/${CRUISE}/${EXPEDITION}/drix08/02-raw"
+
+### DO NOT EDIT BELOW HERE ###
+# Archive path on echo
 ARCHIVE='/home/field/data/mnt/external_drive/archive'
+
+LINK=$1
+
+if [ "${LINK}" = '' -o `echo "${LINK}" | grep wire` ]
+then
+    ECHOIP='192.168.8.180'
+else if [ `echo ${LINK} | grep mbr` ]
+then
+    ECHOIP='172.16.11.8'
+    ECHOPORT='13001'
+else if [ '`echo ${LINK} | grep wifi' ]
+then
+    ECHOIP='172.16.10.8'
+    ECHOPORT='13001'
+fi
+
+if [ `echo ${LINK} | grep dryrun`]
+then
+    DRYRUN='--dry-run'
+else
+DRYRUN=''
+fi
 
 # A failed experiment to filter data by date/time so we only archive
 # data while deployed. Could not figure out how to get the paths right
@@ -22,7 +53,12 @@ ARCHIVE='/home/field/data/mnt/external_drive/archive'
 #echo ${FILES2TRANSFER} | rsync -ravPz ${DRYRUN} --files-from=- ${ECHOIP}:/ ${RAW}/
 # ----
 
-# Use this one for transfers via a direct connection to DriX.
-rsync -ravPz ${DRYRUN} ${ECHOIP}:${ARCHIVE}/ ${RAW}/
-# Use this one for transfers over wifi or mbr:
-#rsync -ravPz -e "ssh -p ${ECHOPORT}" ${DRYRUN} ${ECHOIP}:${ARCHIVE} ${RAW}/
+if [ "${LINK} = '' -o `echo "${LINK}" | grep wire ]
+then
+   # Use this one for transfers via a direct connection to DriX.
+   rsync -ravPz ${DRYRUN} ${ECHOIP}:${ARCHIVE}/ ${RAW}/
+else
+
+   # Use this one for transfers over wifi or mbr:
+   rsync -ravPz -e "ssh -p ${ECHOPORT}" ${DRYRUN} ${ECHOIP}:${ARCHIVE} ${RAW}/
+fi
