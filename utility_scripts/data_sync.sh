@@ -13,8 +13,8 @@ echo "DATA TO PULL: ${DATATOPULL}"
 
 MISSIONSTART='2023-10-01 00:00:00'
 MBESMISSIONSURVEY='NA155_DX082303_NautilusTechChallenge'
-DRYRUN='--dry-run'
-#DRYRUN=''
+#DRYRUN='--dry-run'
+DRYRUN=''
 
 # SOURCE PATHS
 SURVEYPCMOUNT='/home/field/data/mnt/surveypc'
@@ -58,7 +58,7 @@ else
 fi
 
 # Set up directory structure (does nothing if done already)
-mkdir -p ${ARCHIVE}
+# mkdir -p ${ARCHIVE}
 mkdir -p ${DRIXMDT}
 mkdir -p ${EK80}
 mkdir -p ${GPS}
