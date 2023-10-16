@@ -8,11 +8,11 @@ import datetime
 from file_info import FileInfo
 
 class RosBagHandler:
-  position_topics = {'/gps':'DriX',
-    '/project11/mesobot/nav/position':'Mesobot',
+  position_topics = {'/drix_8/comms/topic_simplifier/light_gps':'DriX',
+    '/project11/mesobot/sensors/nav/pose':'Mesobot',
     '/project11/nui/nav/position':'nui',
     '/project11/nautilus/position':'Nautilus',
-    '/mothership_gps':'Mothership'
+    '/mothership/gps':'Mothership'
   }
 
   def __init__(self):
