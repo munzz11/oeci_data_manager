@@ -7,8 +7,9 @@ import datetime
 
 from file_info import FileInfo
 
+# TODO: Break the position_topics out into a config file so they are not hard coded here.
 class RosBagHandler:
-  position_topics = {'/drix_8/comms/topic_simplifier/light_gps':'DriX',
+  position_topics = {'/pos/gps':'DriX',
     '/project11/mesobot/sensors/nav/pose':'Mesobot',
     '/project11/nui/nav/position':'nui',
     '/project11/nautilus/position':'Nautilus',
@@ -18,6 +19,12 @@ class RosBagHandler:
   def __init__(self):
     pass
 
+  def get_msg_types(self,tt):
+    '''Returns a dictionary of of message topics (k) and types (v) found in a bag file.''' 
+    d = {}
+    for k,v in tt[1].items():
+      d[k]=v[0]
+    return d
 
   def needsProcessing(self, file: FileInfo):
     if file.local_path.suffix == '.bag':
@@ -49,6 +56,10 @@ class RosBagHandler:
       for t in RosBagHandler.position_topics:
         if t in tt.topics:
           topics.append(t)
+      
+      # Get all the message types in this bag.
+      msg_types = self.get_msg_types(tt)
+
       if len(topics) == 0:
         return
     except Exception as e:
@@ -60,12 +71,18 @@ class RosBagHandler:
     last_report_times = {}
     interval = rospy.Duration(secs=1.0)
     try:
+
       for topic, msg, t in bag.read_messages(topics=topics):
         vehicle = RosBagHandler.position_topics[topic]
+        #print("Found vehicle %s in log %s" % (vehicle,file.source_path()))
+        # Initialize a new track for this vehicle.
         if not vehicle in tracks:
           tracks[vehicle] = []
           last_report_times[vehicle] = None
-        if topic in ('/gps','/mothership_gps'):
+          # TODO: These if/then statements handle various ways to determine if the position
+          # information is valid. This should be done by message type not by topic name, so the
+          # topics are not hard coded here.
+        if msg_types[topic] == 'mdt_msgs/Gps':
           if msg.fix_quality > 0:
             if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
               fix = {'timestamp': msg.header.stamp.to_sec()}
@@ -74,7 +91,8 @@ class RosBagHandler:
               fix['altitude'] = 0.0
               tracks[vehicle].append(fix)
               last_report_times[vehicle] = msg.header.stamp
-        elif topic in ('/project11/mesobot/nav/position','/project11/nui/nav/position'):
+        #elif topic in ('/project11/mesobot/sensors/nav/pose','/project11/nui/nav/position'):
+        elif msg_types[topic] == 'geographic_msgs/GeoPoseStamped':
           if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
               fix = {'timestamp': msg.header.stamp.to_sec()}
               fix['latitude'] = msg.pose.position.latitude
@@ -90,7 +108,7 @@ class RosBagHandler:
         #       fix['altitude'] = msg.position.altitude
         #       tracks[vehicle].append(fix)
         #       last_report_times[vehicle] = msg.header.stamp
-        else:
+        elif msg_types[topic] == 'sensor_msgs/NavSatFix':
           if msg.status.status >= 0:
             if last_report_times[vehicle] is None or msg.header.stamp - last_report_times[vehicle] >= interval:
               fix = {'timestamp': msg.header.stamp.to_sec()}
@@ -100,7 +118,6 @@ class RosBagHandler:
               tracks[vehicle].append(fix)
               last_report_times[vehicle] = msg.header.stamp
 
-          
     except Exception as e:
       print("error extracting nav from bag file",file.local_path, e)
 
