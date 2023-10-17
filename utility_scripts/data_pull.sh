@@ -11,6 +11,8 @@
 #  ./data_pull.sh mbr
 ## Pull of the data over wifi
 #  ./data_pull.sh wifi
+## Pull data over vpn
+#  ./data_pull.sh vpn
 
 ### EDIT THIS ####
 # Path to raw data in operator station archive (robonuc)
@@ -43,6 +45,10 @@ elif [ `echo ${LINK} | grep wifi` ]
 then
     ECHOIP='172.16.10.8'
     ECHOPORT='13001'
+elif [ `echo ${LINK} | grep vpn` ]
+then
+    ECHOIP='10.8.0.8'
+    ECHOPORT='13005'
 fi
 
 
@@ -64,6 +70,6 @@ then
 else
 
    # Use this one for transfers over wifi or mbr:
-   echo "Pulling data by mbr or wifi"
+   echo "Pulling data by `echo ${LINK} | sed 's/dryrun\,//' | sed 's/,//'`"
    rsync -ravPz -e "ssh -p ${ECHOPORT}" ${DRYRUN} ${ECHOIP}:${ARCHIVE}/ ${RAW}/
 fi
