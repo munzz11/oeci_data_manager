@@ -27,7 +27,7 @@ class RosBagHandler:
     return d
 
   def needsProcessing(self, file: FileInfo):
-    if file.local_path.suffix == '.bag':
+    if file.local_path.suffix == '.bag' and "mbes" not in file.local_path.parts:
       if file.has_meta_value(self, 'start_time') and not file.is_modified():
         return False
       if file.meta is not None and 'RosBagIndexHandler' in file.meta:

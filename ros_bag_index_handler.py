@@ -11,7 +11,13 @@ class RosBagIndexHandler:
     pass
 
   def needsProcessing(self, file: FileInfo):
-    if file.local_path.suffix == '.bag' or file.local_path.parts[-1].endswith('.bag.active'):
+    
+    # Skip bathy "bag" files.
+    if "mbes" in file.local_path.parts:
+      return False
+    
+    if (file.local_path.suffix == '.bag' or 
+    file.local_path.parts[-1].endswith('.bag.active')):
       if file.has_meta_value(self, 'indexed'):
         indexed = file.get_meta_value(self, 'indexed')
         if indexed:
