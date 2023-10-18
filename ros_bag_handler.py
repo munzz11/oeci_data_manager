@@ -125,8 +125,10 @@ class RosBagHandler:
     tracks_for_meta = {}
     for v in tracks:
       if len(tracks[v]):
-        min_lat = max_lat = tracks[v][0]['latitude']
-        min_lon = max_lon = tracks[v][0]['longitude']
+        min_lat = tracks[v][0]['latitude']
+        max_lat = tracks[v][0]['latitude']
+        min_lon = tracks[v][0]['longitude']
+        max_lon = tracks[v][0]['longitude']
         for fix in tracks[v]:
           min_lat = min(min_lat, fix['latitude'])
           max_lat = max(max_lat, fix['latitude'])

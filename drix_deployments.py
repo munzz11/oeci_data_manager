@@ -84,9 +84,9 @@ class DrixDeployments:
                           bounds[vehicle]['min']['latitude'] = min(position['latitude'],bounds[vehicle]['min']['latitude'])
                           bounds[vehicle]['min']['longitude'] = min(position['longitude'],bounds[vehicle]['min']['longitude'])
                           bounds[vehicle]['min']['altitude'] = min(position['altitude'],bounds[vehicle]['min']['altitude'])
-                          bounds[vehicle]['max']['latitude'] = min(position['latitude'],bounds[vehicle]['max']['latitude'])
-                          bounds[vehicle]['max']['longitude'] = min(position['longitude'],bounds[vehicle]['max']['longitude'])
-                          bounds[vehicle]['max']['altitude'] = min(position['altitude'],bounds[vehicle]['max']['altitude'])
+                          bounds[vehicle]['max']['latitude'] = max(position['latitude'],bounds[vehicle]['max']['latitude'])
+                          bounds[vehicle]['max']['longitude'] = max(position['longitude'],bounds[vehicle]['max']['longitude'])
+                          bounds[vehicle]['max']['altitude'] = max(position['altitude'],bounds[vehicle]['max']['altitude'])
                         else:
                           bounds[vehicle]['min']['latitude'] = position['latitude']
                           bounds[vehicle]['min']['longitude'] = position['longitude']
