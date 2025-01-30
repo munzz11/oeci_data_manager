@@ -18,6 +18,7 @@ class DrixDeployments:
   def generate(self):
     # Loops over possible platforms, drix08, plus others, in the top level archive directory.
     for platform in self.project.platforms():
+      print("Platforms in project: ",platform)
       print("Extracting deployment data for %s" % platform)
       # Read the deployments json file, which gives the name and time bounds of each platform deployment.
       deployments_path = self.project.find_source_path(pathlib.Path(platform)/'01-catalog/deployments.json')
@@ -31,10 +32,9 @@ class DrixDeployments:
         end_time = datetime.datetime.fromisoformat(d['end']+'+00:00').timestamp()
         print(start_time,'to',end_time)
         bagfiles = {'drix':[],'robobox':[],'p11':[],'p11_operator':[]}
-        for f in self.project( pathlib.Path(platform)):
+        for f in self.project(pathlib.Path(platform)):
           # if f.local_path.suffix == '.bag' and not 'RosBagHandler' in f.meta:
           #   print('RosBagHandler not in meta for ',f.local_path)
-
             # Find the logs from each source having timestamps within the bounds of the 
             # deployment start and end time:
           if 'RosBagHandler' in f.meta and 'start_time' in f.meta['RosBagHandler'] and 'end_time' in f.meta['RosBagHandler']:
@@ -44,7 +44,7 @@ class DrixDeployments:
               #print('      ',f.local_path.name)
               if 'ROBOBOX' in f.local_path.name:
                 bagfiles['robobox'].append(f)
-              elif 'DRIX' in f.local_path.name and f.local_path.parts[-2] == 'mission_logs':
+              elif 'VEHICLE' in f.local_path.name and f.local_path.parts[-2] == 'mission_logs':
                 bagfiles['drix'].append(f)
               elif 'project11' in f.local_path.name:
                 if 'project11_operator' in f.local_path.name:

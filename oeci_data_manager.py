@@ -71,33 +71,39 @@ class ProcessProgress:
 # Function to parse command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="OECI Data Manager")
-    parser.add_argument("command", choices=["list", "init", "scan", "process", "gui"], help="Command to execute")
-    parser.add_argument("--config-dir", default=str(pathlib.Path("~/.oeci_data_manager")), help="Path to config directory")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    subparsers = parser.add_subparsers(dest='command', title='commands', required=True, help='Command to execute')
 
-    subparsers = parser.add_subparsers(dest="subcommand")
+    # Common parent parser for shared arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument("--config-dir", default=str(pathlib.Path("~/.oeci_data_manager")), help="Path to config directory")
+    parent_parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
-    # Arguments for the "init" command
-    init_parser = subparsers.add_parser("init", help="Initialize a new project")
+    # List command (no additional arguments)
+    subparsers.add_parser("list", parents=[parent_parser], help="List available projects")
+
+    # Init command
+    init_parser = subparsers.add_parser("init", parents=[parent_parser], help="Initialize a new project")
     init_parser.add_argument("--source", required=True, help="Source directory")
     init_parser.add_argument("--label", help="Project label")
     init_parser.add_argument("--output", help="Output directory")
-
-    # Arguments for the "scan" command
-    scan_parser = subparsers.add_parser("scan", help="Scan for files needing processing")
+    # Scan command
+    scan_parser = subparsers.add_parser("scan", parents=[parent_parser], help="Scan for files needing processing")
     scan_parser.add_argument("--project", required=True, help="Project to scan")
     scan_parser.add_argument("--process_count", type=int, default=1, help="Number of jobs for processing")
-
-    # Arguments for the "process" command
-    process_parser = subparsers.add_parser("process", help="Process files")
+    # Process command
+    process_parser = subparsers.add_parser("process", parents=[parent_parser], help="Process files")
     process_parser.add_argument("--project", required=True, help="Project to process")
     process_parser.add_argument("--process_count", type=int, default=1, help="Number of jobs for processing")
+    # GUI command (no additional arguments)
+    subparsers.add_parser("gui", parents=[parent_parser], help="Launch graphical interface")
 
-    return parser.parse_args()
+    return parser.parse_args()       
 
 # Main function handling the core logic
 def main():
     args = parse_args()
+
+    print(args)
 
     config_dir = pathlib.Path(args.config_dir).expanduser()
     verbose = args.verbose
@@ -112,6 +118,7 @@ def main():
     if verbose:
         print(f"Config Directory: {config.path} (Exists: {config.exists()})")
 
+    
     command = args.command
 
     if command == "list":
