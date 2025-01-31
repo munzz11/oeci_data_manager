@@ -179,7 +179,10 @@ def main():
                 print(f"Files to process: {stats['needs_processing']['count']} ({human_readable_size(stats['needs_processing']['size'])})")
 
             project.process([HashHandler, RosBagIndexHandler, RosBagHandler], process_count, ProcessProgress(stats['needs_processing']['size']) if verbose else None)
-            project.generate_manifest()
+            try:
+                project.generate_manifest()
+            except Exception as e:
+                print(f"Error generating manifest: {e}")
             dgen = DrixDeployments(project)
             dgen.generate()
 
