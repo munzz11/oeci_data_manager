@@ -4,17 +4,28 @@ from numpy import empty
 import rosbag
 import rospy
 import datetime
-
+import json
+from pathlib import Path
 from file_info import FileInfo
 
-# TODO: Break the position_topics out into a config file so they are not hard coded here.
 class RosBagHandler:
-  position_topics = {'/pos/gps':'DriX',
-    '/project11/mesobot/sensors/nav/pose':'Mesobot',
-    '/project11/nui/nav/position':'nui',
-    '/project11/nautilus/position':'Nautilus',
-    '/mothership/gps':'Mothership'
-  }
+  
+  # Load position topics from JSON file
+    _position_topics_path = Path(__file__).parent / "position_topics.json"
+    
+    @classmethod
+    def _load_position_topics(cls):
+        try:
+            with open(cls._position_topics_path) as f:
+                json_data = json.load(f)
+            return {
+                entry[0]["topic"]: entry[1]["platform"] 
+                for entry in json_data
+            }
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            raise RuntimeError(f"Error loading position topics: {str(e)}") from e
+
+    position_topics = _load_position_topics()
 
   def __init__(self):
     pass
@@ -24,6 +35,7 @@ class RosBagHandler:
     d = {}
     for k,v in tt[1].items():
       d[k]=v[0]
+    print(d)
     return d
 
   def needsProcessing(self, file: FileInfo):

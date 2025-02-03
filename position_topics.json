@@ -1,0 +1,7 @@
+[
+[{"topic":"/pos/gps"},{"platform":"DriX"}],
+[{"topic":"/project11/mesobot/sensors/nav/pose"},{"platform":"Mesobot"}],
+[{"topic":"/project11/nui/nav/position"},{"platform":"nui"}],
+[{"topic":"/project11/nautilus/position"},{"platform":"Nautilus"}],
+[{"topic":"/mothership/gps"},{"platform":"Mothership"}]
+]
