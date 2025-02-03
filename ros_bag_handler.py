@@ -9,26 +9,22 @@ from pathlib import Path
 from file_info import FileInfo
 
 class RosBagHandler:
-  
-  # Load position topics from JSON file
-    _position_topics_path = Path(__file__).parent / "position_topics.json"
-    
-    @classmethod
-    def _load_position_topics(cls):
-        try:
-            with open(cls._position_topics_path) as f:
-                json_data = json.load(f)
-            return {
-                entry[0]["topic"]: entry[1]["platform"] 
-                for entry in json_data
-            }
-        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            raise RuntimeError(f"Error loading position topics: {str(e)}") from e
-
-    position_topics = _load_position_topics()
 
   def __init__(self):
     pass
+
+  def load_position_topics():
+    try:
+      with open(Path(__file__).parent / "position_topics.json") as f: # Load the position topics from a json file.
+        json_data = json.load(f)
+      return {
+        entry[0]["topic"]: entry[1]["platform"] 
+        for entry in json_data
+      }
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+      raise RuntimeError(f"Error loading position topics: {str(e)}") from e
+        
+  position_topics = load_position_topics()
 
   def get_msg_types(self,tt):
     '''Returns a dictionary of of message topics (k) and types (v) found in a bag file.''' 
